@@ -1,0 +1,3105 @@
+# Source of truth: docs/api.md. Design contract; runtime behavior is not verified.
+openapi: 3.1.0
+info:
+  title: Meelyze+ API
+  version: 0.1.0-draft
+  description: docs/api.mdを正本として作成した設計契約。アプリ・DB・外部サービスの実装や動作確認を示すものではない。JSON名はsnake_case。未定義入力は422。日時はUTC。AIの予測と未認証の店員回答を区別し、安全性・認証を保証しない。
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+servers:
+  - url: /api/v1
+    description: API_ORIGINからの相対URL。本番のホストは未指定。
+tags:
+  - name: P0
+    description: 必須7操作。優先して契約を検証する。
+  - name: P1
+    description: P0完成後に追加する10操作。
+security: []
+x-source: ../docs/api.md
+x-specification-notes:
+  - レスポンス例のフィールドは原則requiredとした。price・店舗未選択のgoogle_place_id・store_history・vote_shares・next_cursorはnullを許可。例だけの項目の省略可否は未指定。
+  - 不明AIのevidenceは型・空値が明記されていない。全AI variantで文字列（空文字可）として暫定定義し、null・欠落は許可しない。
+  - 料理名200文字、Place ID255文字、priceの範囲・桁、currencyの3文字は、APIから参照するDB仕様で補足した。
+  - API 6のlocaleは共通の既定enに従い任意と解釈した。GETでのallergen_ids省略時の対象と空クエリ文字列の扱いは詳細に未指定。
+  - API 9のパスワード長、cursorの書式・最大長、公開集計の料理数上限・ページングは未指定。値・上限・追加パラメータを創作していない。
+  - エラーcode一覧は主な値であり網羅enumとは書かれていない。文字列とsnake_caseパターン・列挙済みexamplesで定義した。共通SQLSTATE変換に基づく404と共通入力検証422を該当操作に含めた。
+  - 画素数超過時のHTTPコード、画像破損と非対応形式の区別は未指定。画像のバイト数・画素数を拡張属性と説明で記録し、サーバーでの検証を必須とした。
+  - 登録のemail・nicknameは正規化後の制約。OpenAPI自体は空白除去や小文字化を実行しないため、処理順はサーバー実装で揃える。
+  - DB・画面で使う原材料候補ingredientsはAPIのレスポンスに定義がないため追加していない。生のVLM JSON Schemaは本契約の対象外。
+  - 同一request_idの保存内容にはlocaleを含めないと解釈（RPC引数にlocaleがない）。合計回答数・直積・所有者・公開条件・冪等性・票計算はサーバー検証が必要。
+paths:
+  /health:
+    get:
+      operationId: get_health
+      summary: APIの稼働確認
+      description: APIの起動状態だけを返す。DB・外部接続情報・バージョン詳細は返さない。
+      tags:
+        - P0
+      x-api-number: 1
+      x-priority: P0
+      security: []
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/health_response"
+              example:
+                status: ok
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /allergens:
+    get:
+      operationId: get_allergens
+      summary: アレルゲン29品目のマスタ取得
+      description: requiredの9品目・recommendedの20品目をdisplay_order順にすべて返す。名称・ID・codeはdocs/database.mdのマスタに従う。
+      tags:
+        - P0
+      x-api-number: 2
+      x-priority: P0
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/locale"
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/allergens_response"
+              example:
+                allergens:
+                  - id: 1
+                    code: egg
+                    name: 卵
+                    name_en: Egg
+                    display_name: Egg
+                    category: required
+                    display_order: 1
+                  - id: 2
+                    code: milk
+                    name: 乳
+                    name_en: Milk
+                    display_name: Milk
+                    category: required
+                    display_order: 2
+                  - id: 3
+                    code: wheat
+                    name: 小麦
+                    name_en: Wheat
+                    display_name: Wheat
+                    category: required
+                    display_order: 3
+                  - id: 6
+                    code: buckwheat
+                    name: そば
+                    name_en: Buckwheat
+                    display_name: Buckwheat
+                    category: required
+                    display_order: 4
+                  - id: 7
+                    code: peanut
+                    name: 落花生（ピーナッツ）
+                    name_en: Peanut
+                    display_name: Peanut
+                    category: required
+                    display_order: 5
+                  - id: 4
+                    code: shrimp
+                    name: えび
+                    name_en: Shrimp
+                    display_name: Shrimp
+                    category: required
+                    display_order: 6
+                  - id: 5
+                    code: crab
+                    name: かに
+                    name_en: Crab
+                    display_name: Crab
+                    category: required
+                    display_order: 7
+                  - id: 8
+                    code: walnut
+                    name: くるみ
+                    name_en: Walnut
+                    display_name: Walnut
+                    category: required
+                    display_order: 8
+                  - id: 11
+                    code: cashew
+                    name: カシューナッツ
+                    name_en: Cashew
+                    display_name: Cashew
+                    category: required
+                    display_order: 9
+                  - id: 12
+                    code: almond
+                    name: アーモンド
+                    name_en: Almond
+                    display_name: Almond
+                    category: recommended
+                    display_order: 10
+                  - id: 13
+                    code: abalone
+                    name: あわび
+                    name_en: Abalone
+                    display_name: Abalone
+                    category: recommended
+                    display_order: 11
+                  - id: 14
+                    code: squid
+                    name: いか
+                    name_en: Squid
+                    display_name: Squid
+                    category: recommended
+                    display_order: 12
+                  - id: 15
+                    code: salmon_roe
+                    name: いくら
+                    name_en: Salmon roe
+                    display_name: Salmon roe
+                    category: recommended
+                    display_order: 13
+                  - id: 16
+                    code: orange
+                    name: オレンジ
+                    name_en: Orange
+                    display_name: Orange
+                    category: recommended
+                    display_order: 14
+                  - id: 17
+                    code: kiwi
+                    name: キウイフルーツ
+                    name_en: Kiwi
+                    display_name: Kiwi
+                    category: recommended
+                    display_order: 15
+                  - id: 18
+                    code: beef
+                    name: 牛肉
+                    name_en: Beef
+                    display_name: Beef
+                    category: recommended
+                    display_order: 16
+                  - id: 10
+                    code: sesame
+                    name: ごま
+                    name_en: Sesame
+                    display_name: Sesame
+                    category: recommended
+                    display_order: 17
+                  - id: 19
+                    code: salmon
+                    name: さけ
+                    name_en: Salmon
+                    display_name: Salmon
+                    category: recommended
+                    display_order: 18
+                  - id: 20
+                    code: mackerel
+                    name: さば
+                    name_en: Mackerel
+                    display_name: Mackerel
+                    category: recommended
+                    display_order: 19
+                  - id: 9
+                    code: soy
+                    name: 大豆
+                    name_en: Soy
+                    display_name: Soy
+                    category: recommended
+                    display_order: 20
+                  - id: 21
+                    code: chicken
+                    name: 鶏肉
+                    name_en: Chicken
+                    display_name: Chicken
+                    category: recommended
+                    display_order: 21
+                  - id: 22
+                    code: banana
+                    name: バナナ
+                    name_en: Banana
+                    display_name: Banana
+                    category: recommended
+                    display_order: 22
+                  - id: 23
+                    code: pork
+                    name: 豚肉
+                    name_en: Pork
+                    display_name: Pork
+                    category: recommended
+                    display_order: 23
+                  - id: 24
+                    code: pistachio
+                    name: ピスタチオ
+                    name_en: Pistachio
+                    display_name: Pistachio
+                    category: recommended
+                    display_order: 24
+                  - id: 25
+                    code: macadamia_nut
+                    name: マカダミアナッツ
+                    name_en: Macadamia nut
+                    display_name: Macadamia nut
+                    category: recommended
+                    display_order: 25
+                  - id: 26
+                    code: peach
+                    name: もも
+                    name_en: Peach
+                    display_name: Peach
+                    category: recommended
+                    display_order: 26
+                  - id: 27
+                    code: yam
+                    name: やまいも
+                    name_en: Yam
+                    display_name: Yam
+                    category: recommended
+                    display_order: 27
+                  - id: 28
+                    code: apple
+                    name: りんご
+                    name_en: Apple
+                    display_name: Apple
+                    category: recommended
+                    display_order: 28
+                  - id: 29
+                    code: gelatin
+                    name: ゼラチン
+                    name_en: Gelatin
+                    display_name: Gelatin
+                    category: recommended
+                    display_order: 29
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /places/nearby:
+    get:
+      operationId: get_nearby_places
+      summary: 周辺の飲食店検索
+      description: Places API（New）のNearby
+        Searchをサーバー用キーで呼び、飲食店に絞って最大20件を距離順で返す。公開メニュー件数を付与する。店名・座標・住所は保存せず、現在地をログに残さない。IP単位30回/分（初期案）。
+      tags:
+        - P0
+      x-api-number: 3
+      x-priority: P0
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/latitude"
+        - $ref: "#/components/parameters/longitude"
+        - $ref: "#/components/parameters/radius_m"
+        - $ref: "#/components/parameters/locale"
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/nearby_places_response"
+              example:
+                places:
+                  - google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
+                    name: Soba Dining Demo
+                    latitude: 35.6815
+                    longitude: 139.7668
+                    address: 1-1 Marunouchi, Chiyoda City
+                    distance_m: 42
+                    has_public_menus: true
+                    public_menu_count: 2
+                attribution: Google Maps
+        "422":
+          $ref: "#/components/responses/validation_error"
+        "429":
+          $ref: "#/components/responses/rate_limited"
+        "503":
+          $ref: "#/components/responses/service_unavailable"
+  /menus/analyze:
+    post:
+      operationId: analyze_menu
+      summary: 画像解析・メニュー保存・予測
+      description: アカウントBearerは任意。なしなら所有者NULL・利用者同意false。送信されたJWTは署名・期限・typ・所有者の存在を検証し、不正なら401（ゲストへ降格しない）。所有者と登録時同意はサーバー側で決め、本文の指定を拒否する。画像検証→Place
+        ID確認→Gemini解析・出力検証→非公開Storage保存→解析結果の原子的保存→予測。選択設定は保存せずVLMにも渡さない。店舗ありなら同じ料理・項目の非公開回答も予測に集計する。DB失敗時は画像を削除。自動再送しない。IP単位5回/分・50回/日（初期案）。
+      tags:
+        - P0
+      x-api-number: 4
+      x-priority: P0
+      security:
+        - {}
+        - account_bearer: []
+      requestBody:
+        required: true
+        description: 画像1枚と任意の店舗・対象ID・locale。配列は同じフィールド名のpartを繰り返す（allergen_ids=4、allergen_ids=6）。JSON配列文字列やカンマ区切りpartは受け付けない。
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/analyze_request"
+            encoding:
+              image:
+                contentType: image/jpeg, image/png
+              allergen_ids:
+                style: form
+                explode: true
+              dietary_restriction_ids:
+                style: form
+                explode: true
+              google_place_id:
+                contentType: text/plain
+              locale:
+                contentType: text/plain
+      responses:
+        "201":
+          description: 作成成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/analyze_response"
+              example:
+                menu_id: 22222222-2222-4222-8222-222222222222
+                google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
+                analysis_token: <解析用トークン（この応答でだけ返す）>
+                analysis_expires_at: 2026-10-18T03:00:00Z
+                ai_model: gemini-3.8-flash
+                prompt_version: v4
+                analyzed_at: 2026-10-17T03:00:00Z
+                locale: en
+                dishes:
+                  - dish_id: 33333333-3333-4333-8333-333333333331
+                    dish_version: 1
+                    name: 海老天そば
+                    display_name: Shrimp tempura soba
+                    description: Buckwheat noodles in hot broth topped with shrimp tempura.
+                    price: 1200
+                    currency: JPY
+                    allergens:
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        prediction:
+                          status: contains
+                          basis: ai_and_store_answers
+                          vote_shares:
+                            contains: 1
+                            cross_contact: 0
+                            not_contains: 0
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                        store_history:
+                          answer_counts:
+                            contains: 2
+                            cross_contact: 0
+                            not_contains: 0
+                            unknown: 0
+                          last_confirmed_at: 2026-10-10T05:00:00Z
+                          has_conflict: false
+                      - allergen_id: 6
+                        display_name: Buckwheat
+                        prediction:
+                          status: possible
+                          basis: ai_only
+                          vote_shares: null
+                        ai:
+                          status: possible
+                          source: dish_name_inference
+                          evidence: Soba noodles are usually made with buckwheat.
+                        store_history: null
+                    dietary_restrictions:
+                      - dietary_restriction_id: 4
+                        display_name: No alcohol
+                        prediction:
+                          status: possible
+                          basis: ai_only
+                          vote_shares: null
+                        ai:
+                          status: possible_conflict
+                          source: recipe_inference
+                          evidence: The broth seasoning may use cooking sake.
+                        store_history: null
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not_found"
+        "413":
+          $ref: "#/components/responses/image_too_large"
+        "415":
+          $ref: "#/components/responses/unsupported_image_type"
+        "422":
+          $ref: "#/components/responses/validation_error"
+        "429":
+          $ref: "#/components/responses/rate_limited"
+        "502":
+          $ref: "#/components/responses/invalid_ai_output"
+        "503":
+          $ref: "#/components/responses/service_unavailable"
+        "504":
+          $ref: "#/components/responses/timeout"
+  /menus/{menu_id}:
+    get:
+      operationId: get_menu
+      summary: 解析・予測結果の再取得
+      description: このメニューの解析用Bearerが必要。対象違いは401、期限切れは410。VLMを再実行せず、過去回答を含む予測だけを再計算する。料理はposition順。生のトークンは返さない。
+      tags:
+        - P0
+      x-api-number: 5
+      x-priority: P0
+      security:
+        - analysis_bearer: []
+      parameters:
+        - $ref: "#/components/parameters/menu_id"
+        - $ref: "#/components/parameters/allergen_ids"
+        - $ref: "#/components/parameters/dietary_restriction_ids"
+        - $ref: "#/components/parameters/locale"
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/menu_response"
+              example:
+                menu_id: 22222222-2222-4222-8222-222222222222
+                google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
+                analysis_expires_at: 2026-10-18T03:00:00Z
+                ai_model: gemini-3.8-flash
+                prompt_version: v4
+                analyzed_at: 2026-10-17T03:00:00Z
+                locale: en
+                dishes:
+                  - dish_id: 33333333-3333-4333-8333-333333333331
+                    dish_version: 1
+                    name: 海老天そば
+                    display_name: Shrimp tempura soba
+                    description: Buckwheat noodles in hot broth topped with shrimp tempura.
+                    price: 1200
+                    currency: JPY
+                    allergens:
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        prediction:
+                          status: contains
+                          basis: ai_and_store_answers
+                          vote_shares:
+                            contains: 1
+                            cross_contact: 0
+                            not_contains: 0
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                        store_history:
+                          answer_counts:
+                            contains: 2
+                            cross_contact: 0
+                            not_contains: 0
+                            unknown: 0
+                          last_confirmed_at: 2026-10-10T05:00:00Z
+                          has_conflict: false
+                      - allergen_id: 6
+                        display_name: Buckwheat
+                        prediction:
+                          status: possible
+                          basis: ai_only
+                          vote_shares: null
+                        ai:
+                          status: possible
+                          source: dish_name_inference
+                          evidence: Soba noodles are usually made with buckwheat.
+                        store_history: null
+                    dietary_restrictions:
+                      - dietary_restriction_id: 4
+                        display_name: No alcohol
+                        prediction:
+                          status: possible
+                          basis: ai_only
+                          vote_shares: null
+                        ai:
+                          status: possible_conflict
+                          source: recipe_inference
+                          evidence: The broth seasoning may use cooking sake.
+                        store_history: null
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not_found"
+        "410":
+          $ref: "#/components/responses/analysis_expired"
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /menus/{menu_id}/confirmations:
+    post:
+      operationId: create_confirmation
+      summary: 店員回答・公開可否の一括保存
+      description: 両回答配列と店員の公開同意を1回のRPCで原子的に保存する。利用者同意は解析時のスナップショットを使う。店舗あり・利用者同意・今回の店員同意がすべてtrueの場合だけ公開。他の確認の同意で今回の回答を公開しない。非公開でも同店舗の予測には集計利用し、店舗未選択は公開・再利用とも不可。同一request_idと同一内容は200、違う内容は409。新規確認は最大5回で、再送判定は上限判定より先。期限切れは再送も410。
+      tags:
+        - P0
+      x-api-number: 6
+      x-priority: P0
+      security:
+        - analysis_bearer: []
+      parameters:
+        - $ref: "#/components/parameters/menu_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/confirmation_request"
+            example:
+              request_id: 66666666-6666-4666-8666-666666666666
+              answers:
+                - dish_id: 33333333-3333-4333-8333-333333333331
+                  allergen_id: 4
+                  answer: contains
+                - dish_id: 33333333-3333-4333-8333-333333333331
+                  allergen_id: 6
+                  answer: cross_contact
+              dietary_answers:
+                - dish_id: 33333333-3333-4333-8333-333333333331
+                  dietary_restriction_id: 4
+                  answer: unknown
+              publish_consent: true
+              locale: en
+      responses:
+        "200":
+          description: 同一request_id・同一回答・同一の店員同意を再送。行は増えずreplayed=true。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/confirmation_replayed_response"
+              example:
+                session_id: 44444444-4444-4444-8444-444444444444
+                confirmed_at: 2026-10-17T03:10:00Z
+                publish_consent: true
+                user_publish_consent: true
+                is_public: true
+                replayed: true
+                results:
+                  - dish_id: 33333333-3333-4333-8333-333333333331
+                    display_name: Shrimp tempura soba
+                    allergens:
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        answer: contains
+                        answer_label: Contains
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                      - allergen_id: 6
+                        display_name: Buckwheat
+                        answer: cross_contact
+                        answer_label: Cross-contact (not an ingredient, but cooked with shared equipment)
+                        ai:
+                          status: possible
+                          source: dish_name_inference
+                          evidence: Soba noodles are usually made with buckwheat.
+                    dietary_restrictions:
+                      - dietary_restriction_id: 4
+                        display_name: No alcohol
+                        answer: unknown
+                        answer_label: Unknown
+                        ai:
+                          status: possible_conflict
+                          source: recipe_inference
+                          evidence: The broth seasoning may use cooking sake.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "201":
+          description: 作成成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/confirmation_created_response"
+              example:
+                session_id: 44444444-4444-4444-8444-444444444444
+                confirmed_at: 2026-10-17T03:10:00Z
+                publish_consent: true
+                user_publish_consent: true
+                is_public: true
+                replayed: false
+                results:
+                  - dish_id: 33333333-3333-4333-8333-333333333331
+                    display_name: Shrimp tempura soba
+                    allergens:
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        answer: contains
+                        answer_label: Contains
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                      - allergen_id: 6
+                        display_name: Buckwheat
+                        answer: cross_contact
+                        answer_label: Cross-contact (not an ingredient, but cooked with shared equipment)
+                        ai:
+                          status: possible
+                          source: dish_name_inference
+                          evidence: Soba noodles are usually made with buckwheat.
+                    dietary_restrictions:
+                      - dietary_restriction_id: 4
+                        display_name: No alcohol
+                        answer: unknown
+                        answer_label: Unknown
+                        ai:
+                          status: possible_conflict
+                          source: recipe_inference
+                          evidence: The broth seasoning may use cooking sake.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not_found"
+        "409":
+          $ref: "#/components/responses/conflict"
+        "410":
+          $ref: "#/components/responses/analysis_expired"
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /dietary-restrictions:
+    get:
+      operationId: get_dietary_restrictions
+      summary: 食事制限4種類のマスタ取得
+      description: Vegan・Vegetarian・Halal・No alcoholの固定マスタを返す。自由入力は扱わない。
+      tags:
+        - P0
+      x-api-number: 13
+      x-priority: P0
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/locale"
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/dietary_restrictions_response"
+              example:
+                dietary_restrictions:
+                  - id: 1
+                    code: vegan
+                    name: ヴィーガン
+                    display_name: Vegan
+                  - id: 2
+                    code: vegetarian
+                    name: ベジタリアン
+                    display_name: Vegetarian
+                  - id: 3
+                    code: halal
+                    name: ハラール
+                    display_name: Halal
+                  - id: 4
+                    code: no_alcohol
+                    name: アルコール不使用
+                    display_name: No alcohol
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /places/{google_place_id}/public-menus:
+    get:
+      operationId: get_public_menus
+      summary: 店舗・料理ごとの公開回答集計
+      description: 公開ビュー3つだけを使い、同店舗のname_keyごとに全利用者の公開回答を集計する。店舗あり・利用者同意true・店員同意trueが必須。非公開回答の内容・件数を混ぜない。代表は撮影日時が最新の公開料理（同日時はdish_id降順）。AIの票は代表1件分だけ。代表の撮影日時降順、同日時はname_key順。対象なしはdishes=[]。個別の撮影・確認履歴や所有者・画像・トークンは返さない。
+      tags:
+        - P1
+      x-api-number: 7
+      x-priority: P1
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/place_id_path"
+        - $ref: "#/components/parameters/allergen_ids"
+        - $ref: "#/components/parameters/dietary_restriction_ids"
+        - $ref: "#/components/parameters/locale"
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/public_menus_response"
+              example:
+                google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
+                dishes:
+                  - name_key: 海老天そば
+                    name: 海老天そば
+                    display_name: Shrimp tempura soba
+                    description: Buckwheat noodles in hot broth topped with shrimp tempura.
+                    price: 1200
+                    currency: JPY
+                    allergens:
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        prediction:
+                          status: contains
+                          basis: ai_and_store_answers
+                          vote_shares:
+                            contains: 0.8
+                            cross_contact: 0
+                            not_contains: 0.2
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                        store_history:
+                          answer_counts:
+                            contains: 2
+                            cross_contact: 0
+                            not_contains: 1
+                            unknown: 0
+                          last_confirmed_at: 2026-10-17T03:10:00Z
+                          has_conflict: true
+                    dietary_restrictions: []
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /auth/register:
+    post:
+      operationId: register_account
+      summary: アカウントと公開同意の登録
+      description: メール・ニックネームを正規化し、パスワードは空白を削らずArgon2idでハッシュ化する。公開同意は必須booleanで、falseでも登録できる。DBの記録日時とAPI管理の文言バージョン2026-10-17-v1を使い、同意とアカウントを同時保存する。日時・版をクライアントに指定させない。重複メールは一意制約で409。メール確認は行わない。IP単位5回/時（初期案）。
+      tags:
+        - P1
+      x-api-number: 8
+      x-priority: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/register_request"
+            example:
+              email: traveler@example.com
+              nickname: Alex
+              password: <8〜128文字>
+              publish_consent: true
+      responses:
+        "201":
+          description: 作成成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/auth_response"
+              example:
+                account:
+                  id: 55555555-5555-4555-8555-555555555555
+                  email: traveler@example.com
+                  nickname: Alex
+                  publish_consent: true
+                  publish_consent_recorded_at: 2026-10-17T03:00:00Z
+                  publish_consent_version: 2026-10-17-v1
+                  created_at: 2026-10-17T03:00:00Z
+                access_token: <アカウント用トークン>
+                token_type: bearer
+                expires_at: 2026-10-18T03:00:00Z
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "409":
+          $ref: "#/components/responses/conflict"
+        "422":
+          $ref: "#/components/responses/validation_error"
+        "429":
+          $ref: "#/components/responses/rate_limited"
+  /auth/login:
+    post:
+      operationId: login_account
+      summary: ログイン
+      description: メールは登録時と同じ正規化を行いArgon2idで照合する。存在しないアカウントでもダミーハッシュで照合。メール不存在・パスワード違いは同じ401
+        invalid_credentials。成功時は必要なら再ハッシュする。失敗はIP単位10回/分・メール単位5回/15分。JWTは24時間有効、リフレッシュトークン・即時失効・ログアウトAPIはない。
+      tags:
+        - P1
+      x-api-number: 9
+      x-priority: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/login_request"
+            example:
+              email: traveler@example.com
+              password: <パスワード>
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/auth_response"
+              example:
+                account:
+                  id: 55555555-5555-4555-8555-555555555555
+                  email: traveler@example.com
+                  nickname: Alex
+                  publish_consent: true
+                  publish_consent_recorded_at: 2026-10-17T03:00:00Z
+                  publish_consent_version: 2026-10-17-v1
+                  created_at: 2026-10-17T03:00:00Z
+                access_token: <アカウント用トークン>
+                token_type: bearer
+                expires_at: 2026-10-18T03:00:00Z
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "422":
+          $ref: "#/components/responses/validation_error"
+        "429":
+          $ref: "#/components/responses/rate_limited"
+  /me:
+    get:
+      operationId: get_me
+      summary: 本人のアカウント情報取得
+      description: アカウントJWTのsubで対象を決める。password・password_hashを返さない。
+      tags:
+        - P1
+      x-api-number: 10
+      x-priority: P1
+      security:
+        - account_bearer: []
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/account"
+              example:
+                id: 55555555-5555-4555-8555-555555555555
+                email: traveler@example.com
+                nickname: Alex
+                publish_consent: true
+                publish_consent_recorded_at: 2026-10-17T03:00:00Z
+                publish_consent_version: 2026-10-17-v1
+                created_at: 2026-10-17T03:00:00Z
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /me/allergens:
+    get:
+      operationId: get_my_allergens
+      summary: 本人のアレルゲン設定取得
+      description: アカウントJWTのsubの設定だけをID昇順で返す。未登録は空配列。更新日時は返さない。
+      tags:
+        - P1
+      x-api-number: 11
+      x-priority: P1
+      security:
+        - account_bearer: []
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/account_allergens"
+              example:
+                allergen_ids:
+                  - 4
+                  - 6
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "422":
+          $ref: "#/components/responses/validation_error"
+    put:
+      operationId: replace_my_allergens
+      summary: 本人のアレルゲン設定を全件置換
+      description: JWTのsubの設定をreplace_account_allergensの1回のRPCで置換。空配列で全解除できる。重複・未知IDは422
+        invalid_allergen_ids。途中失敗時は元の設定を保つ。食事制限の置換とは別トランザクション。
+      tags:
+        - P1
+      x-api-number: 12
+      x-priority: P1
+      security:
+        - account_bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/account_allergens"
+            example:
+              allergen_ids:
+                - 4
+                - 6
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/account_allergens"
+              example:
+                allergen_ids:
+                  - 4
+                  - 6
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not_found"
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /me/dietary-restrictions:
+    get:
+      operationId: get_my_dietary_restrictions
+      summary: 本人の食事制限設定取得
+      description: アカウントJWTのsubの設定だけをID昇順で返す。未登録は空配列。
+      tags:
+        - P1
+      x-api-number: 14
+      x-priority: P1
+      security:
+        - account_bearer: []
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/account_dietary_restrictions"
+              example:
+                dietary_restriction_ids:
+                  - 1
+                  - 4
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "422":
+          $ref: "#/components/responses/validation_error"
+    put:
+      operationId: replace_my_dietary_restrictions
+      summary: 本人の食事制限設定を全件置換
+      description: JWTのsubの設定をreplace_account_dietary_restrictionsの1回のRPCで置換。空配列で全解除できる。重複・未知IDは422
+        invalid_dietary_restriction_ids。途中失敗時は元の設定を保つ。アレルゲン設定とは別保存で、画面は両方成功後に遷移する。
+      tags:
+        - P1
+      x-api-number: 15
+      x-priority: P1
+      security:
+        - account_bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/account_dietary_restrictions"
+            example:
+              dietary_restriction_ids:
+                - 1
+                - 4
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/account_dietary_restrictions"
+              example:
+                dietary_restriction_ids:
+                  - 1
+                  - 4
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not_found"
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /me/menus:
+    get:
+      operationId: get_my_menus
+      summary: 本人が読み込んだメニュー一覧
+      description: 必ずmenus.account_id=JWT.subで絞り、created_at DESC, id
+        DESCで返す。店舗フィルターも所有者とAND。非公開・未確認・店舗未選択を含む。公開メニューを見ただけでは履歴へ追加せず、ゲスト解析を登録後に移管しない。cursorのページ位置に行がなくてもエラーにせず、不正形式は422。画像・トークン・所有者ID・プロファイルは返さない。
+      tags:
+        - P1
+      x-api-number: 16
+      x-priority: P1
+      security:
+        - account_bearer: []
+      parameters:
+        - $ref: "#/components/parameters/history_place_id"
+        - $ref: "#/components/parameters/history_limit"
+        - $ref: "#/components/parameters/history_cursor"
+        - $ref: "#/components/parameters/locale"
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/history_response"
+              example:
+                menus:
+                  - menu_id: 22222222-2222-4222-8222-222222222222
+                    google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
+                    scanned_at: 2026-10-17T03:00:00Z
+                    dish_names:
+                      - Shrimp tempura soba
+                    dish_count: 1
+                    confirmation_count: 1
+                    is_public: true
+                next_cursor: null
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "422":
+          $ref: "#/components/responses/validation_error"
+  /me/menus/{menu_id}:
+    get:
+      operationId: get_my_menu
+      summary: 本人のメニュー・個別確認の詳細
+      description: menu_idとaccount_id=JWT.subを同じクエリで検証し、他人・所有者なし・存在しないIDは同じ404。料理内store_historyは他の利用者分を含む予測用集計、confirmationsはこの所有メニューだけの個別回答。画像削除・解析トークン失効後も読めるが、回答追加・トークン再発行・期限延長はできない。
+      tags:
+        - P1
+      x-api-number: 17
+      x-priority: P1
+      security:
+        - account_bearer: []
+      parameters:
+        - $ref: "#/components/parameters/menu_id"
+        - $ref: "#/components/parameters/allergen_ids"
+        - $ref: "#/components/parameters/dietary_restriction_ids"
+        - $ref: "#/components/parameters/locale"
+      responses:
+        "200":
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/history_menu_response"
+              example:
+                menu_id: 22222222-2222-4222-8222-222222222222
+                google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
+                ai_model: gemini-3.8-flash
+                prompt_version: v4
+                analyzed_at: 2026-10-17T03:00:00Z
+                locale: en
+                dishes:
+                  - dish_id: 33333333-3333-4333-8333-333333333331
+                    dish_version: 1
+                    name: 海老天そば
+                    display_name: Shrimp tempura soba
+                    description: Buckwheat noodles in hot broth topped with shrimp tempura.
+                    price: 1200
+                    currency: JPY
+                    allergens:
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        prediction:
+                          status: contains
+                          basis: ai_and_store_answers
+                          vote_shares:
+                            contains: 1
+                            cross_contact: 0
+                            not_contains: 0
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                        store_history:
+                          answer_counts:
+                            contains: 2
+                            cross_contact: 0
+                            not_contains: 0
+                            unknown: 0
+                          last_confirmed_at: 2026-10-10T05:00:00Z
+                          has_conflict: false
+                      - allergen_id: 6
+                        display_name: Buckwheat
+                        prediction:
+                          status: possible
+                          basis: ai_only
+                          vote_shares: null
+                        ai:
+                          status: possible
+                          source: dish_name_inference
+                          evidence: Soba noodles are usually made with buckwheat.
+                        store_history: null
+                    dietary_restrictions:
+                      - dietary_restriction_id: 4
+                        display_name: No alcohol
+                        prediction:
+                          status: possible
+                          basis: ai_only
+                          vote_shares: null
+                        ai:
+                          status: possible_conflict
+                          source: recipe_inference
+                          evidence: The broth seasoning may use cooking sake.
+                        store_history: null
+                user_publish_consent: true
+                is_public: true
+                confirmations:
+                  - session_id: 44444444-4444-4444-8444-444444444444
+                    confirmed_at: 2026-10-17T03:10:00Z
+                    publish_consent: true
+                    is_public: true
+                    results:
+                      - dish_id: 33333333-3333-4333-8333-333333333331
+                        display_name: Shrimp tempura soba
+                        allergens:
+                          - allergen_id: 4
+                            display_name: Shrimp
+                            answer: contains
+                            answer_label: Contains
+                            ai:
+                              status: explicit_present
+                              source: menu_text
+                              evidence: 海老天
+                          - allergen_id: 6
+                            display_name: Buckwheat
+                            answer: cross_contact
+                            answer_label: Cross-contact (not an ingredient, but cooked with shared equipment)
+                            ai:
+                              status: possible
+                              source: dish_name_inference
+                              evidence: Soba noodles are usually made with buckwheat.
+                        dietary_restrictions:
+                          - dietary_restriction_id: 4
+                            display_name: No alcohol
+                            answer: unknown
+                            answer_label: Unknown
+                            ai:
+                              status: possible_conflict
+                              source: recipe_inference
+                              evidence: The broth seasoning may use cooking sake.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not_found"
+        "422":
+          $ref: "#/components/responses/validation_error"
+components:
+  securitySchemes:
+    analysis_bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Opaque analysis token
+      description: 解析成功時に発行する256bit以上の乱数由来トークン。対象menu_idだけの再取得と確認保存に使用。24時間。ハッシュやアカウントJWTを代用しない。
+    account_bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: HS256のJWT。sub・iat・exp・typ=accountを検証し、アカウントの存在も確認する。24時間。本人情報・設定・履歴、新規解析の所有者特定に使用。既存メニューの確認保存には使えない。
+  parameters:
+    menu_id:
+      name: menu_id
+      in: path
+      required: true
+      description: 対象メニューのID。IDを知っているだけでは権限にならない。
+      schema:
+        $ref: "#/components/schemas/uuid"
+    place_id_path:
+      name: google_place_id
+      in: path
+      required: true
+      description: 公開回答を取得する店舗。
+      schema:
+        $ref: "#/components/schemas/google_place_id"
+    locale:
+      name: locale
+      in: query
+      required: false
+      description: 省略時en。MVPで他言語を指定すると422。
+      schema:
+        $ref: "#/components/schemas/locale"
+    allergen_ids:
+      name: allergen_ids
+      in: query
+      required: false
+      description: "カンマ区切り（例: allergen_ids=4,6）。multipartの繰り返しフィールドとは異なる。予測対象にだけ使い、保存しない。"
+      schema:
+        $ref: "#/components/schemas/allergen_ids"
+      style: form
+      explode: false
+      example:
+        - 4
+        - 6
+    dietary_restriction_ids:
+      name: dietary_restriction_ids
+      in: query
+      required: false
+      description: "カンマ区切り（例: dietary_restriction_ids=1,4）。省略時は食事制限の予測なし。"
+      schema:
+        $ref: "#/components/schemas/dietary_restriction_ids"
+      style: form
+      explode: false
+      example:
+        - 1
+        - 4
+    history_place_id:
+      name: google_place_id
+      in: query
+      required: false
+      description: 本人の履歴をこの店舗で絞る。省略時は店舗未選択を含む本人の全履歴。
+      schema:
+        $ref: "#/components/schemas/google_place_id"
+    history_limit:
+      name: limit
+      in: query
+      required: false
+      description: 1ページの最大件数。既定20。
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    history_cursor:
+      name: cursor
+      in: query
+      required: false
+      description: 前ページのnext_cursor。作成日時とIDによるページ位置。不正形式は422。cursorを使っても所有者条件を外さない。
+      schema:
+        type: string
+    latitude:
+      name: lat
+      in: query
+      required: true
+      description: 現在地の緯度。ログに残さない。
+      schema:
+        type: number
+        minimum: -90
+        maximum: 90
+      example: 35.6812
+    longitude:
+      name: lng
+      in: query
+      required: true
+      description: 現在地の経度。ログに残さない。
+      schema:
+        type: number
+        minimum: -180
+        maximum: 180
+      example: 139.7671
+    radius_m:
+      name: radius_m
+      in: query
+      required: false
+      description: 検索半径（m）。50〜1000、既定300。
+      schema:
+        type: integer
+        minimum: 50
+        maximum: 1000
+        default: 300
+  headers:
+    no_store:
+      description: 解析・確認・アカウント・本人履歴・公開集計はキャッシュしない。
+      required: true
+      schema:
+        type: string
+        const: no-store
+  responses:
+    unauthorized:
+      description: 認証なし・不正・対象と不一致。unauthorized / invalid_analysis_token / invalid_credentials /
+        account_token_expired。解析用とアカウント用を代用しない。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: unauthorized
+              message: Authentication is required.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    not_found:
+      description: not_found / place_not_found。本人履歴の他人・所有者なし・存在しないIDは同じ404。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: not_found
+              message: The resource was not found.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    conflict:
+      description: request_id_conflict / email_already_registered。同じrequest_idで異なる内容、または重複メール。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: request_id_conflict
+              message: The request_id was already used with different content.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    analysis_expired:
+      description: 解析用トークンが期限切れ。analysis_expired。再発行やアカウントJWTによる代用はしない。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: analysis_expired
+              message: The analysis has expired. Please take a new photo.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    image_too_large:
+      description: 画像容量が2 MiBを超過。image_too_large。画素数超過のステータスは未指定。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: image_too_large
+              message: The image exceeds the 2 MiB limit.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    unsupported_image_type:
+      description: JPEG・PNG以外の画像。unsupported_image_type。実形式も検証する。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: unsupported_image_type
+              message: Choose a JPEG or PNG image.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    validation_error:
+      description: validation_error / answers_invalid / dish_not_in_menu / unreadable_menu /
+        confirmation_limit_reached / invalid_allergen_ids /
+        invalid_dietary_restriction_ids。未定義フィールド、不正型・値、上限超過、不足・重複、読めないメニュー、不正cursorを含む。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: validation_error
+              message: The request is invalid.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    rate_limited:
+      description: rate_limited。解析・周辺検索・登録・ログイン失敗のレート制限。Retry-Afterの有無・値は仕様にないため定義しない。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: rate_limited
+              message: Too many requests. Please try again later.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    invalid_ai_output:
+      description: invalid_ai_output。AI出力の構造・項目ID・statusとsourceの組などが不正。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: invalid_ai_output
+              message: The analysis service returned an invalid result.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    service_unavailable:
+      description: service_unavailable。Google・Gemini等の外部サービスが利用できない。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: service_unavailable
+              message: The service is temporarily unavailable.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+    timeout:
+      description: timeout。AI等の待機時間超過。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/error_response"
+          example:
+            error:
+              code: timeout
+              message: The analysis timed out.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/no_store"
+  schemas:
+    uuid:
+      type: string
+      format: uuid
+    utc_datetime:
+      type: string
+      format: date-time
+      pattern: (Z|\+00:00)$
+      description: UTCのISO 8601日時。サーバーが付与する。
+      examples:
+        - 2026-10-17T03:00:00Z
+    locale:
+      type: string
+      enum:
+        - en
+      default: en
+      description: MVPは英語のみ。他言語は422。店員画面の日本語はクライアントの辞書を使用する。
+    google_place_id:
+      type: string
+      minLength: 1
+      maxLength: 255
+      description: Google PlacesのPlace ID。長さはdocs/database.mdのrestaurants定義に従う。
+    allergen_id:
+      type: integer
+      minimum: 1
+      maximum: 29
+      enum:
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
+        - 14
+        - 15
+        - 16
+        - 17
+        - 18
+        - 19
+        - 20
+        - 21
+        - 22
+        - 23
+        - 24
+        - 25
+        - 26
+        - 27
+        - 28
+        - 29
+      description: 固定29品目のID。表示順とは異なる。食事制限IDとは別のID空間。
+    dietary_restriction_id:
+      type: integer
+      minimum: 1
+      maximum: 4
+      enum:
+        - 1
+        - 2
+        - 3
+        - 4
+      description: 1=Vegan、2=Vegetarian、3=Halal、4=No alcohol。
+    allergen_ids:
+      type: array
+      items:
+        $ref: "#/components/schemas/allergen_id"
+      minItems: 0
+      uniqueItems: true
+      description: 重複・未知IDは422。本人設定では空配列で全解除できる。
+      maxItems: 29
+    dietary_restriction_ids:
+      type: array
+      items:
+        $ref: "#/components/schemas/dietary_restriction_id"
+      minItems: 0
+      uniqueItems: true
+      description: 重複・未知IDは422。本人設定では空配列で全解除できる。
+      maxItems: 4
+    analysis_token:
+      type: string
+      minLength: 1
+      description: 256bit以上の乱数をURL-safe化した解析用トークン。24時間有効。発行応答のみで返す。DBにはSHA-256ハッシュだけを保存する。
+    account_token:
+      type: string
+      minLength: 1
+      description: HS256署名のJWT。sub、iat、exp、typ="account"を含む。24時間有効。DBに保存せず、解析用トークンの代用不可。
+    image_upload:
+      type: string
+      format: binary
+      description: JPEGまたはPNGの画像1枚。実バイト数2 MiB（2,097,152
+        bytes）以下、20,000,000画素以下。MIMEと実形式を検証する。バイト数・画素数はサーバーで検査し、文字数制限で代用しない。
+      x-max-size-bytes: 2097152
+      x-max-pixels: 20000000
+    allergen_master_item:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - name
+        - name_en
+        - display_name
+        - category
+        - display_order
+      properties:
+        id:
+          $ref: "#/components/schemas/allergen_id"
+        code:
+          type: string
+          enum:
+            - egg
+            - milk
+            - wheat
+            - buckwheat
+            - peanut
+            - shrimp
+            - crab
+            - walnut
+            - cashew
+            - almond
+            - abalone
+            - squid
+            - salmon_roe
+            - orange
+            - kiwi
+            - beef
+            - sesame
+            - salmon
+            - mackerel
+            - soy
+            - chicken
+            - banana
+            - pork
+            - pistachio
+            - macadamia_nut
+            - peach
+            - yam
+            - apple
+            - gelatin
+        name:
+          type: string
+          description: マスタの日本語名。
+        name_en:
+          type: string
+          description: マスタの英語名。
+        display_name:
+          type: string
+          description: locale=enではname_enと同じ。
+        category:
+          type: string
+          enum:
+            - required
+            - recommended
+        display_order:
+          type: integer
+          minimum: 1
+          maximum: 29
+      description: docs/database.mdのアレルゲンマスタの名称・ID・分類・順序に一致させる。Otherはない。
+    allergens_response:
+      type: object
+      additionalProperties: false
+      required:
+        - allergens
+      properties:
+        allergens:
+          type: array
+          items:
+            $ref: "#/components/schemas/allergen_master_item"
+          minItems: 29
+          uniqueItems: true
+          description: requiredの9件、recommendedの20件をdisplay_order昇順で返す。
+          maxItems: 29
+    dietary_master_item:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - name
+        - display_name
+      properties:
+        id:
+          $ref: "#/components/schemas/dietary_restriction_id"
+        code:
+          type: string
+          enum:
+            - vegan
+            - vegetarian
+            - halal
+            - no_alcohol
+        name:
+          type: string
+        display_name:
+          type: string
+      description: 食事制限マスタ。API 13の形式に従いname_enフィールドは返さない。確認条件はdocs/database.md。
+    dietary_restrictions_response:
+      type: object
+      additionalProperties: false
+      required:
+        - dietary_restrictions
+      properties:
+        dietary_restrictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/dietary_master_item"
+          minItems: 4
+          uniqueItems: true
+          maxItems: 4
+    health_response:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          const: ok
+    nearby_place:
+      type: object
+      additionalProperties: false
+      required:
+        - google_place_id
+        - name
+        - latitude
+        - longitude
+        - address
+        - distance_m
+        - has_public_menus
+        - public_menu_count
+      properties:
+        google_place_id:
+          $ref: "#/components/schemas/google_place_id"
+        name:
+          type: string
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        address:
+          type: string
+        distance_m:
+          type: number
+          minimum: 0
+          description: 現在地からの距離（m）。整数への丸め規則は未指定。
+        has_public_menus:
+          type: boolean
+        public_menu_count:
+          type: integer
+          minimum: 0
+      description: 店名・座標・住所はGoogleから都度取得しDBに保存しない。公開件数には非公開のメニューを含めない。
+    nearby_places_response:
+      type: object
+      additionalProperties: false
+      required:
+        - places
+        - attribution
+      properties:
+        places:
+          type: array
+          items:
+            $ref: "#/components/schemas/nearby_place"
+          minItems: 0
+          description: 距離の昇順。
+          maxItems: 20
+        attribution:
+          type: string
+          description: Googleの帰属表示。
+          examples:
+            - Google Maps
+    allergen_ai_explicit:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - source
+        - evidence
+      properties:
+        status:
+          type: string
+          const: explicit_present
+        source:
+          type: string
+          enum:
+            - menu_text
+        evidence:
+          type: string
+          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+    allergen_ai_inferred:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - source
+        - evidence
+      properties:
+        status:
+          type: string
+          const: possible
+        source:
+          type: string
+          enum:
+            - recipe_inference
+            - dish_name_inference
+        evidence:
+          type: string
+          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+    allergen_ai_unknown:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - source
+        - evidence
+      properties:
+        status:
+          type: string
+          const: unknown
+        source:
+          type: string
+          enum:
+            - unavailable
+        evidence:
+          type: string
+          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+    allergen_ai_assessment:
+      oneOf:
+        - $ref: "#/components/schemas/allergen_ai_explicit"
+        - $ref: "#/components/schemas/allergen_ai_inferred"
+        - $ref: "#/components/schemas/allergen_ai_unknown"
+      description: 根拠は明記→記載された原材料・説明→料理名の優先順で1つにする。AIは交差接触、不使用、対応可を確定しない。
+    dietary_ai_explicit:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - source
+        - evidence
+      properties:
+        status:
+          type: string
+          const: explicit_conflict
+        source:
+          type: string
+          enum:
+            - menu_text
+        evidence:
+          type: string
+          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+    dietary_ai_inferred:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - source
+        - evidence
+      properties:
+        status:
+          type: string
+          const: possible_conflict
+        source:
+          type: string
+          enum:
+            - recipe_inference
+            - dish_name_inference
+        evidence:
+          type: string
+          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+    dietary_ai_unknown:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - source
+        - evidence
+      properties:
+        status:
+          type: string
+          const: unknown
+        source:
+          type: string
+          enum:
+            - unavailable
+        evidence:
+          type: string
+          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+    dietary_ai_assessment:
+      oneOf:
+        - $ref: "#/components/schemas/dietary_ai_explicit"
+        - $ref: "#/components/schemas/dietary_ai_inferred"
+        - $ref: "#/components/schemas/dietary_ai_unknown"
+      description: 根拠は明記→記載された原材料・説明→料理名の優先順で1つにする。AIは交差接触、不使用、対応可を確定しない。
+    allergen_answer:
+      type: string
+      enum:
+        - contains
+        - cross_contact
+        - not_contains
+        - unknown
+      description: unknownは明示回答。欠落・nullは未回答として拒否する。
+    allergen_vote_shares:
+      type: object
+      additionalProperties: false
+      required:
+        - contains
+        - cross_contact
+        - not_contains
+      properties:
+        contains:
+          type: number
+          minimum: 0
+          maximum: 1
+          multipleOf: 0.001
+        cross_contact:
+          type: number
+          minimum: 0
+          maximum: 1
+          multipleOf: 0.001
+        not_contains:
+          type: number
+          minimum: 0
+          maximum: 1
+          multipleOf: 0.001
+      description: 小数3桁の重み付き得票割合。確率ではない。丸めにより合計が厳密な1にならない場合がある。
+    allergen_answer_counts:
+      type: object
+      additionalProperties: false
+      required:
+        - contains
+        - cross_contact
+        - not_contains
+        - unknown
+      properties:
+        contains:
+          type: integer
+          minimum: 0
+        cross_contact:
+          type: integer
+          minimum: 0
+        not_contains:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+    allergen_store_history:
+      type: object
+      additionalProperties: false
+      required:
+        - answer_counts
+        - last_confirmed_at
+        - has_conflict
+      properties:
+        answer_counts:
+          $ref: "#/components/schemas/allergen_answer_counts"
+        last_confirmed_at:
+          $ref: "#/components/schemas/utc_datetime"
+        has_conflict:
+          type: boolean
+      description: 同じ店舗・料理名キー・項目IDに限定した集計。unknownも件数と最終日時に含める。両極の回答が混在すればhas_conflict=true。
+    allergen_prediction:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - status
+            - basis
+            - vote_shares
+          properties:
+            status:
+              type: string
+              enum:
+                - contains
+                - possible
+                - unknown
+            basis:
+              type: string
+              const: ai_only
+            vote_shares:
+              type: "null"
+          description: 過去回答なし。AIのみの分類。
+        - type: object
+          additionalProperties: false
+          required:
+            - status
+            - basis
+            - vote_shares
+          properties:
+            status:
+              type: string
+              enum:
+                - contains
+                - possible
+                - unknown
+            basis:
+              type: string
+              const: ai_and_store_answers
+            vote_shares:
+              type: "null"
+          description: 過去回答がunknownのみ。AIの分類を維持し、件数・最終日時には不明回答を含める。
+        - type: object
+          additionalProperties: false
+          required:
+            - status
+            - basis
+            - vote_shares
+          properties:
+            status:
+              type: string
+              enum:
+                - contains
+                - cross_contact
+                - not_contains
+            basis:
+              type: string
+              const: ai_and_store_answers
+            vote_shares:
+              $ref: "#/components/schemas/allergen_vote_shares"
+          description: 有効な過去回答あり。最多票を選び、同率は否定側→交差接触→肯定側の順。
+      description: AI候補と時間減衰する過去回答を組み合わせた予測。得票割合は確率ではない。
+    allergen_assessment:
+      type: object
+      additionalProperties: false
+      required:
+        - allergen_id
+        - display_name
+        - prediction
+        - ai
+        - store_history
+      properties:
+        allergen_id:
+          $ref: "#/components/schemas/allergen_id"
+        display_name:
+          type: string
+        prediction:
+          $ref: "#/components/schemas/allergen_prediction"
+        ai:
+          $ref: "#/components/schemas/allergen_ai_assessment"
+        store_history:
+          oneOf:
+            - $ref: "#/components/schemas/allergen_store_history"
+            - type: "null"
+          description: 範囲内の回答が0件ならnull。
+    allergen_confirmation_answer:
+      type: object
+      additionalProperties: false
+      required:
+        - dish_id
+        - allergen_id
+        - answer
+      properties:
+        dish_id:
+          $ref: "#/components/schemas/uuid"
+        allergen_id:
+          $ref: "#/components/schemas/allergen_id"
+        answer:
+          $ref: "#/components/schemas/allergen_answer"
+    allergen_confirmation_result:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - allergen_id
+            - display_name
+            - answer
+            - answer_label
+            - ai
+          properties:
+            allergen_id:
+              $ref: "#/components/schemas/allergen_id"
+            display_name:
+              type: string
+            answer:
+              type: string
+              const: contains
+            answer_label:
+              type: string
+              const: Contains
+            ai:
+              $ref: "#/components/schemas/allergen_ai_assessment"
+        - type: object
+          additionalProperties: false
+          required:
+            - allergen_id
+            - display_name
+            - answer
+            - answer_label
+            - ai
+          properties:
+            allergen_id:
+              $ref: "#/components/schemas/allergen_id"
+            display_name:
+              type: string
+            answer:
+              type: string
+              const: cross_contact
+            answer_label:
+              type: string
+              const: Cross-contact (not an ingredient, but cooked with shared equipment)
+            ai:
+              $ref: "#/components/schemas/allergen_ai_assessment"
+        - type: object
+          additionalProperties: false
+          required:
+            - allergen_id
+            - display_name
+            - answer
+            - answer_label
+            - ai
+          properties:
+            allergen_id:
+              $ref: "#/components/schemas/allergen_id"
+            display_name:
+              type: string
+            answer:
+              type: string
+              const: not_contains
+            answer_label:
+              type: string
+              const: Does not contain
+            ai:
+              $ref: "#/components/schemas/allergen_ai_assessment"
+        - type: object
+          additionalProperties: false
+          required:
+            - allergen_id
+            - display_name
+            - answer
+            - answer_label
+            - ai
+          properties:
+            allergen_id:
+              $ref: "#/components/schemas/allergen_id"
+            display_name:
+              type: string
+            answer:
+              type: string
+              const: unknown
+            answer_label:
+              type: string
+              const: Unknown
+            ai:
+              $ref: "#/components/schemas/allergen_ai_assessment"
+    dietary_answer:
+      type: string
+      enum:
+        - not_supported
+        - cross_contact
+        - supported
+        - unknown
+      description: unknownは明示回答。欠落・nullは未回答として拒否する。
+    dietary_vote_shares:
+      type: object
+      additionalProperties: false
+      required:
+        - not_supported
+        - cross_contact
+        - supported
+      properties:
+        not_supported:
+          type: number
+          minimum: 0
+          maximum: 1
+          multipleOf: 0.001
+        cross_contact:
+          type: number
+          minimum: 0
+          maximum: 1
+          multipleOf: 0.001
+        supported:
+          type: number
+          minimum: 0
+          maximum: 1
+          multipleOf: 0.001
+      description: 小数3桁の重み付き得票割合。確率ではない。丸めにより合計が厳密な1にならない場合がある。
+    dietary_answer_counts:
+      type: object
+      additionalProperties: false
+      required:
+        - not_supported
+        - cross_contact
+        - supported
+        - unknown
+      properties:
+        not_supported:
+          type: integer
+          minimum: 0
+        cross_contact:
+          type: integer
+          minimum: 0
+        supported:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+    dietary_store_history:
+      type: object
+      additionalProperties: false
+      required:
+        - answer_counts
+        - last_confirmed_at
+        - has_conflict
+      properties:
+        answer_counts:
+          $ref: "#/components/schemas/dietary_answer_counts"
+        last_confirmed_at:
+          $ref: "#/components/schemas/utc_datetime"
+        has_conflict:
+          type: boolean
+      description: 同じ店舗・料理名キー・項目IDに限定した集計。unknownも件数と最終日時に含める。両極の回答が混在すればhas_conflict=true。
+    dietary_prediction:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - status
+            - basis
+            - vote_shares
+          properties:
+            status:
+              type: string
+              enum:
+                - not_supported
+                - possible
+                - unknown
+            basis:
+              type: string
+              const: ai_only
+            vote_shares:
+              type: "null"
+          description: 過去回答なし。AIのみの分類。
+        - type: object
+          additionalProperties: false
+          required:
+            - status
+            - basis
+            - vote_shares
+          properties:
+            status:
+              type: string
+              enum:
+                - not_supported
+                - possible
+                - unknown
+            basis:
+              type: string
+              const: ai_and_store_answers
+            vote_shares:
+              type: "null"
+          description: 過去回答がunknownのみ。AIの分類を維持し、件数・最終日時には不明回答を含める。
+        - type: object
+          additionalProperties: false
+          required:
+            - status
+            - basis
+            - vote_shares
+          properties:
+            status:
+              type: string
+              enum:
+                - not_supported
+                - cross_contact
+                - supported
+            basis:
+              type: string
+              const: ai_and_store_answers
+            vote_shares:
+              $ref: "#/components/schemas/dietary_vote_shares"
+          description: 有効な過去回答あり。最多票を選び、同率は否定側→交差接触→肯定側の順。
+      description: AI候補と時間減衰する過去回答を組み合わせた予測。得票割合は確率ではない。
+    dietary_assessment:
+      type: object
+      additionalProperties: false
+      required:
+        - dietary_restriction_id
+        - display_name
+        - prediction
+        - ai
+        - store_history
+      properties:
+        dietary_restriction_id:
+          $ref: "#/components/schemas/dietary_restriction_id"
+        display_name:
+          type: string
+        prediction:
+          $ref: "#/components/schemas/dietary_prediction"
+        ai:
+          $ref: "#/components/schemas/dietary_ai_assessment"
+        store_history:
+          oneOf:
+            - $ref: "#/components/schemas/dietary_store_history"
+            - type: "null"
+          description: 範囲内の回答が0件ならnull。
+    dietary_confirmation_answer:
+      type: object
+      additionalProperties: false
+      required:
+        - dish_id
+        - dietary_restriction_id
+        - answer
+      properties:
+        dish_id:
+          $ref: "#/components/schemas/uuid"
+        dietary_restriction_id:
+          $ref: "#/components/schemas/dietary_restriction_id"
+        answer:
+          $ref: "#/components/schemas/dietary_answer"
+    dietary_confirmation_result:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - dietary_restriction_id
+            - display_name
+            - answer
+            - answer_label
+            - ai
+          properties:
+            dietary_restriction_id:
+              $ref: "#/components/schemas/dietary_restriction_id"
+            display_name:
+              type: string
+            answer:
+              type: string
+              const: not_supported
+            answer_label:
+              type: string
+              const: Not supported
+            ai:
+              $ref: "#/components/schemas/dietary_ai_assessment"
+        - type: object
+          additionalProperties: false
+          required:
+            - dietary_restriction_id
+            - display_name
+            - answer
+            - answer_label
+            - ai
+          properties:
+            dietary_restriction_id:
+              $ref: "#/components/schemas/dietary_restriction_id"
+            display_name:
+              type: string
+            answer:
+              type: string
+              const: cross_contact
+            answer_label:
+              type: string
+              const: Cross-contact
+            ai:
+              $ref: "#/components/schemas/dietary_ai_assessment"
+        - type: object
+          additionalProperties: false
+          required:
+            - dietary_restriction_id
+            - display_name
+            - answer
+            - answer_label
+            - ai
+          properties:
+            dietary_restriction_id:
+              $ref: "#/components/schemas/dietary_restriction_id"
+            display_name:
+              type: string
+            answer:
+              type: string
+              const: supported
+            answer_label:
+              type: string
+              const: Supported (staff answer)
+            ai:
+              $ref: "#/components/schemas/dietary_ai_assessment"
+        - type: object
+          additionalProperties: false
+          required:
+            - dietary_restriction_id
+            - display_name
+            - answer
+            - answer_label
+            - ai
+          properties:
+            dietary_restriction_id:
+              $ref: "#/components/schemas/dietary_restriction_id"
+            display_name:
+              type: string
+            answer:
+              type: string
+              const: unknown
+            answer_label:
+              type: string
+              const: Unknown
+            ai:
+              $ref: "#/components/schemas/dietary_ai_assessment"
+    dish_price:
+      type:
+        - number
+        - "null"
+      minimum: 0
+      maximum: 99999999.99
+      multipleOf: 0.01
+      description: 判読不能ならnull。範囲・小数桁はdocs/database.mdのnumeric(10,2)を補足として反映。
+    currency:
+      type: string
+      minLength: 3
+      maxLength: 3
+      default: JPY
+      description: 通貨コード。DBのchar(3)・既定JPYに対応。対応通貨の固定enumは仕様にない。
+    analyzed_dish:
+      type: object
+      additionalProperties: false
+      required:
+        - dish_id
+        - dish_version
+        - name
+        - display_name
+        - description
+        - price
+        - currency
+        - allergens
+        - dietary_restrictions
+      properties:
+        dish_id:
+          $ref: "#/components/schemas/uuid"
+        dish_version:
+          type: integer
+          const: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: メニュー上の原文。長さはDB仕様に従う。
+        display_name:
+          type: string
+          description: 料理名の英訳。
+        description:
+          type: string
+          description: AI生成の英語の説明。
+        price:
+          $ref: "#/components/schemas/dish_price"
+        currency:
+          $ref: "#/components/schemas/currency"
+        allergens:
+          type: array
+          items:
+            $ref: "#/components/schemas/allergen_assessment"
+          minItems: 0
+          maxItems: 29
+        dietary_restrictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/dietary_assessment"
+          minItems: 0
+          maxItems: 4
+    public_dish:
+      type: object
+      additionalProperties: false
+      required:
+        - name_key
+        - name
+        - display_name
+        - description
+        - price
+        - currency
+        - allergens
+        - dietary_restrictions
+      properties:
+        name_key:
+          type: string
+          minLength: 1
+          description: 料理名をNFKC正規化し、空白除去・小文字化したキー。
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: メニュー上の原文。長さはDB仕様に従う。
+        display_name:
+          type: string
+          description: 料理名の英訳。
+        description:
+          type: string
+          description: AI生成の英語の説明。
+        price:
+          $ref: "#/components/schemas/dish_price"
+        currency:
+          $ref: "#/components/schemas/currency"
+        allergens:
+          type: array
+          items:
+            $ref: "#/components/schemas/allergen_assessment"
+          minItems: 0
+          maxItems: 29
+        dietary_restrictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/dietary_assessment"
+          minItems: 0
+          maxItems: 4
+      description: 同店舗の同名キーを1件にまとめた公開料理。個別のmenu_id・dish_id・session_idや所有者・画像・トークンは返さない。
+    analyze_request:
+      type: object
+      additionalProperties: false
+      required:
+        - image
+      properties:
+        image:
+          $ref: "#/components/schemas/image_upload"
+        google_place_id:
+          $ref: "#/components/schemas/google_place_id"
+        allergen_ids:
+          $ref: "#/components/schemas/allergen_ids"
+          description: 同名のmultipartフィールドを繰り返す。省略時はAIの候補を予測対象にする。カンマ区切りやJSON文字列ではない。
+        dietary_restriction_ids:
+          $ref: "#/components/schemas/dietary_restriction_ids"
+          description: 同名のmultipartフィールドを繰り返す。省略時は食事制限の予測なし。
+        locale:
+          $ref: "#/components/schemas/locale"
+    analyze_response:
+      type: object
+      additionalProperties: false
+      required:
+        - menu_id
+        - google_place_id
+        - ai_model
+        - prompt_version
+        - analyzed_at
+        - locale
+        - dishes
+        - analysis_token
+        - analysis_expires_at
+      properties:
+        menu_id:
+          $ref: "#/components/schemas/uuid"
+        google_place_id:
+          oneOf:
+            - $ref: "#/components/schemas/google_place_id"
+            - type: "null"
+          description: 店舗未選択の場合はnullとして定義。
+        ai_model:
+          type: string
+          examples:
+            - gemini-3.8-flash
+        prompt_version:
+          type: string
+          enum:
+            - v4
+        analyzed_at:
+          $ref: "#/components/schemas/utc_datetime"
+        locale:
+          $ref: "#/components/schemas/locale"
+        dishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/analyzed_dish"
+          minItems: 1
+          description: 保存されたposition順。
+          maxItems: 20
+        analysis_token:
+          $ref: "#/components/schemas/analysis_token"
+        analysis_expires_at:
+          $ref: "#/components/schemas/utc_datetime"
+    menu_response:
+      type: object
+      additionalProperties: false
+      required:
+        - menu_id
+        - google_place_id
+        - ai_model
+        - prompt_version
+        - analyzed_at
+        - locale
+        - dishes
+        - analysis_expires_at
+      properties:
+        menu_id:
+          $ref: "#/components/schemas/uuid"
+        google_place_id:
+          oneOf:
+            - $ref: "#/components/schemas/google_place_id"
+            - type: "null"
+          description: 店舗未選択の場合はnullとして定義。
+        ai_model:
+          type: string
+          examples:
+            - gemini-3.8-flash
+        prompt_version:
+          type: string
+          enum:
+            - v4
+        analyzed_at:
+          $ref: "#/components/schemas/utc_datetime"
+        locale:
+          $ref: "#/components/schemas/locale"
+        dishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/analyzed_dish"
+          minItems: 1
+          description: 保存されたposition順。
+          maxItems: 20
+        analysis_expires_at:
+          $ref: "#/components/schemas/utc_datetime"
+    confirmation_request:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - answers
+        - dietary_answers
+        - publish_consent
+      properties:
+        request_id:
+          $ref: "#/components/schemas/uuid"
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/allergen_confirmation_answer"
+          minItems: 0
+          uniqueItems: true
+          maxItems: 50
+        dietary_answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/dietary_confirmation_answer"
+          minItems: 0
+          uniqueItems: true
+          maxItems: 50
+        publish_consent:
+          type: boolean
+          description: 店員の明示選択。利用者同意は解析保存時の値を使う。
+        locale:
+          $ref: "#/components/schemas/locale"
+      anyOf:
+        - properties:
+            answers:
+              minItems: 1
+        - properties:
+            dietary_answers:
+              minItems: 1
+      description: 両配列合計1〜50回答、料理の和集合1〜10件。片方だけ空は許可。各配列は料理集合×項目集合の直積に1回答ずつ必要で、両配列が非空なら料理集合を一致させる。同一料理・項目の重複は回答値が違っても拒否する。
+      x-max-total-answers: 50
+      x-max-distinct-dishes: 10
+      x-server-validation:
+        - 両配列の合計件数を50以下にする。
+        - 複合キーの重複、直積の欠落、料理集合の不一致を拒否する。
+        - 料理の所属・項目マスタ・トークン・期限を検証する。
+        - 新規確認は1メニュー最大5回。同一内容の再送を上限より先に判定する。
+    confirmed_dish:
+      type: object
+      additionalProperties: false
+      required:
+        - dish_id
+        - display_name
+        - allergens
+        - dietary_restrictions
+      properties:
+        dish_id:
+          $ref: "#/components/schemas/uuid"
+        display_name:
+          type: string
+        allergens:
+          type: array
+          items:
+            $ref: "#/components/schemas/allergen_confirmation_result"
+          minItems: 0
+          maxItems: 29
+        dietary_restrictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/dietary_confirmation_result"
+          minItems: 0
+          maxItems: 4
+      anyOf:
+        - properties:
+            allergens:
+              minItems: 1
+        - properties:
+            dietary_restrictions:
+              minItems: 1
+    confirmation_created_response:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - session_id
+            - confirmed_at
+            - publish_consent
+            - is_public
+            - results
+            - user_publish_consent
+            - replayed
+          properties:
+            session_id:
+              $ref: "#/components/schemas/uuid"
+            confirmed_at:
+              $ref: "#/components/schemas/utc_datetime"
+            publish_consent:
+              type: boolean
+            is_public:
+              type: boolean
+              const: false
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/confirmed_dish"
+              minItems: 1
+              maxItems: 10
+            user_publish_consent:
+              type: boolean
+            replayed:
+              type: boolean
+              const: false
+          description: 非公開の確認。
+        - type: object
+          additionalProperties: false
+          required:
+            - session_id
+            - confirmed_at
+            - publish_consent
+            - is_public
+            - results
+            - user_publish_consent
+            - replayed
+          properties:
+            session_id:
+              $ref: "#/components/schemas/uuid"
+            confirmed_at:
+              $ref: "#/components/schemas/utc_datetime"
+            publish_consent:
+              type: boolean
+              const: true
+            is_public:
+              type: boolean
+              const: true
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/confirmed_dish"
+              minItems: 1
+              maxItems: 10
+            user_publish_consent:
+              type: boolean
+              const: true
+            replayed:
+              type: boolean
+              const: false
+          description: 双方同意あり。店舗が選択済みであることもサーバーで検証する。
+    confirmation_replayed_response:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - session_id
+            - confirmed_at
+            - publish_consent
+            - is_public
+            - results
+            - user_publish_consent
+            - replayed
+          properties:
+            session_id:
+              $ref: "#/components/schemas/uuid"
+            confirmed_at:
+              $ref: "#/components/schemas/utc_datetime"
+            publish_consent:
+              type: boolean
+            is_public:
+              type: boolean
+              const: false
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/confirmed_dish"
+              minItems: 1
+              maxItems: 10
+            user_publish_consent:
+              type: boolean
+            replayed:
+              type: boolean
+              const: true
+          description: 非公開の確認。
+        - type: object
+          additionalProperties: false
+          required:
+            - session_id
+            - confirmed_at
+            - publish_consent
+            - is_public
+            - results
+            - user_publish_consent
+            - replayed
+          properties:
+            session_id:
+              $ref: "#/components/schemas/uuid"
+            confirmed_at:
+              $ref: "#/components/schemas/utc_datetime"
+            publish_consent:
+              type: boolean
+              const: true
+            is_public:
+              type: boolean
+              const: true
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/confirmed_dish"
+              minItems: 1
+              maxItems: 10
+            user_publish_consent:
+              type: boolean
+              const: true
+            replayed:
+              type: boolean
+              const: true
+          description: 双方同意あり。店舗が選択済みであることもサーバーで検証する。
+    history_confirmation:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - confirmed_at
+        - publish_consent
+        - is_public
+        - results
+      properties:
+        session_id:
+          $ref: "#/components/schemas/uuid"
+        confirmed_at:
+          $ref: "#/components/schemas/utc_datetime"
+        publish_consent:
+          type: boolean
+        is_public:
+          type: boolean
+          description: 対象メニューの利用者同意・今回の店員同意・店舗選択がすべてある場合だけtrue。
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/confirmed_dish"
+          minItems: 1
+          maxItems: 10
+      description: 当該所有メニューの個別確認。API 17に記載された項目のみを返し、replayed・user_publish_consentは含めない。
+    public_menus_response:
+      type: object
+      additionalProperties: false
+      required:
+        - google_place_id
+        - dishes
+      properties:
+        google_place_id:
+          $ref: "#/components/schemas/google_place_id"
+        dishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/public_dish"
+          minItems: 0
+          description: 店舗・name_keyごとに1料理。代表料理の撮影日時降順、同日時はname_key順。空配列可。店舗全体の件数上限は未指定（1撮影20料理の上限を適用しない）。
+    email:
+      type: string
+      format: email
+      maxLength: 254
+      description: 前後空白を除去・小文字化した後に形式と長さを検証する。
+    nickname:
+      type: string
+      minLength: 1
+      maxLength: 30
+      pattern: ^[^\x00-\x1f\x7f-\x9f]*$
+      description: 前後空白を除去後に検証。制御文字は禁止。一意ではない。
+    register_request:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - nickname
+        - password
+        - publish_consent
+      properties:
+        email:
+          $ref: "#/components/schemas/email"
+        nickname:
+          $ref: "#/components/schemas/nickname"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          writeOnly: true
+          description: 空白を削らない。メールと同じ値を拒否する（サーバーで比較）。
+        publish_consent:
+          type: boolean
+          description: 明示選択必須。falseでも登録可能。欠落・null・文字列は拒否。
+    login_request:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          $ref: "#/components/schemas/email"
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: 登録済みパスワードを照合する。ログイン入力の長さ制限はAPI 9に明記されていないため追加しない。
+    account:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - email
+        - nickname
+        - publish_consent
+        - publish_consent_recorded_at
+        - publish_consent_version
+        - created_at
+      properties:
+        id:
+          $ref: "#/components/schemas/uuid"
+        email:
+          $ref: "#/components/schemas/email"
+        nickname:
+          $ref: "#/components/schemas/nickname"
+        publish_consent:
+          type: boolean
+        publish_consent_recorded_at:
+          $ref: "#/components/schemas/utc_datetime"
+        publish_consent_version:
+          type: string
+          enum:
+            - 2026-10-17-v1
+        created_at:
+          $ref: "#/components/schemas/utc_datetime"
+      description: 本人情報。password・password_hash・updated_at・本人設定は含めない。
+    auth_response:
+      type: object
+      additionalProperties: false
+      required:
+        - account
+        - access_token
+        - token_type
+        - expires_at
+      properties:
+        account:
+          $ref: "#/components/schemas/account"
+        access_token:
+          $ref: "#/components/schemas/account_token"
+        token_type:
+          type: string
+          const: bearer
+        expires_at:
+          $ref: "#/components/schemas/utc_datetime"
+    account_allergens:
+      type: object
+      additionalProperties: false
+      required:
+        - allergen_ids
+      properties:
+        allergen_ids:
+          $ref: "#/components/schemas/allergen_ids"
+      description: 取得・保存応答はID昇順。未登録は空配列。空配列はアレルギーなしの確認ではない。
+    account_dietary_restrictions:
+      type: object
+      additionalProperties: false
+      required:
+        - dietary_restriction_ids
+      properties:
+        dietary_restriction_ids:
+          $ref: "#/components/schemas/dietary_restriction_ids"
+      description: 取得・保存応答はID昇順。未登録は空配列。空配列は制限なしの確認ではない。
+    history_menu:
+      type: object
+      additionalProperties: false
+      required:
+        - menu_id
+        - google_place_id
+        - scanned_at
+        - dish_names
+        - dish_count
+        - confirmation_count
+        - is_public
+      properties:
+        menu_id:
+          $ref: "#/components/schemas/uuid"
+        google_place_id:
+          oneOf:
+            - $ref: "#/components/schemas/google_place_id"
+            - type: "null"
+        scanned_at:
+          $ref: "#/components/schemas/utc_datetime"
+        dish_names:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: 元メニュー順の英語名。
+          maxItems: 20
+        dish_count:
+          type: integer
+          minimum: 1
+          maximum: 20
+        confirmation_count:
+          type: integer
+          minimum: 0
+          maximum: 5
+        is_public:
+          type: boolean
+          description: 当該メニューに公開可能な確認が1件以上あるか。
+    history_response:
+      type: object
+      additionalProperties: false
+      required:
+        - menus
+        - next_cursor
+      properties:
+        menus:
+          type: array
+          items:
+            $ref: "#/components/schemas/history_menu"
+          minItems: 0
+          description: created_at DESC, id DESC。所有者と店舗条件はAND。
+          maxItems: 50
+        next_cursor:
+          type:
+            - string
+            - "null"
+          description: 次ページの位置。最終ページはnull。内部表現・最大長は未指定。
+    history_menu_response:
+      type: object
+      additionalProperties: false
+      required:
+        - menu_id
+        - google_place_id
+        - ai_model
+        - prompt_version
+        - analyzed_at
+        - locale
+        - dishes
+        - user_publish_consent
+        - is_public
+        - confirmations
+      properties:
+        menu_id:
+          $ref: "#/components/schemas/uuid"
+        google_place_id:
+          oneOf:
+            - $ref: "#/components/schemas/google_place_id"
+            - type: "null"
+          description: 店舗未選択の場合はnullとして定義。
+        ai_model:
+          type: string
+          examples:
+            - gemini-3.8-flash
+        prompt_version:
+          type: string
+          enum:
+            - v4
+        analyzed_at:
+          $ref: "#/components/schemas/utc_datetime"
+        locale:
+          $ref: "#/components/schemas/locale"
+        dishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/analyzed_dish"
+          minItems: 1
+          description: 保存されたposition順。
+          maxItems: 20
+        user_publish_consent:
+          type: boolean
+        is_public:
+          type: boolean
+        confirmations:
+          type: array
+          items:
+            $ref: "#/components/schemas/history_confirmation"
+          minItems: 0
+          description: このメニューの確認だけを新しい順に返す。未確認なら空配列。
+          maxItems: 5
+      description: 本人が解析したメニューのみ。解析用トークン・期限・画像・所有者IDは返さない。
+    error_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]*$
+      examples:
+        - unauthorized
+        - invalid_analysis_token
+        - invalid_credentials
+        - account_token_expired
+        - not_found
+        - place_not_found
+        - request_id_conflict
+        - email_already_registered
+        - analysis_expired
+        - image_too_large
+        - unsupported_image_type
+        - validation_error
+        - answers_invalid
+        - dish_not_in_menu
+        - unreadable_menu
+        - confirmation_limit_reached
+        - invalid_allergen_ids
+        - invalid_dietary_restriction_ids
+        - rate_limited
+        - invalid_ai_output
+        - service_unavailable
+        - timeout
+      description: docs/api.mdは「主なcode」として列挙しており閉じたenumではない。記載済みの値をexamplesで示す。SQL例外文字列や秘密情報は公開しない。
+    error_response:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required:
+            - code
+            - message
+          properties:
+            code:
+              $ref: "#/components/schemas/error_code"
+            message:
+              type: string
+              description: 利用者向けの英語メッセージ。内部SQL・秘密情報は含めない。

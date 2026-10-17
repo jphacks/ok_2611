@@ -40,7 +40,7 @@ Meelyze+ のAPIサーバー。FastAPIで `/api/v1` を提供し、Supabase（Pos
 | `tests/` | 解析用トークン、店員確認、公開条件、予測、アカウントのテスト |
 | `.env.example` | 環境変数の例（秘密値は空欄） |
 
-実行時に、リポジトリ直下の `prompts/menu_analysis.md` と `contracts/menu_analysis.schema.json` を使う設計だが、どちらも未作成。実装前に [未作成ファイルの方針](../../docs/development.md#未作成のファイル) に従って作成する。Vercelのデプロイに含まれるかを確認する（[docs/development.md](../../docs/development.md)）。
+実行時に、リポジトリ直下の `apps/api/prompts/menu_analysis.md` と `apps/api/contracts/menu_analysis.schema.json` を使う設計だが、どちらも未作成。実装前に [未作成ファイルの方針](../../docs/development.md#未作成のファイル) に従って作成する。Vercelのデプロイに含まれるかを確認する（[docs/development.md](../../docs/development.md)）。
 
 ## 環境変数
 
