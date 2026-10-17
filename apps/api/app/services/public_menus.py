@@ -23,7 +23,7 @@ from app.schemas.public_menus import (
 )
 from app.services.answers import allergen_answer_from_db, dietary_answer_from_db
 from app.services.assessment import ALLERGEN_SCALE, DIETARY_SCALE, UNKNOWN_AI, HistoryAnswer, assess_item
-from app.services.menu_results import MasterName, ai_candidates, allergen_parts, dietary_parts
+from app.services.menu_results import MasterName, ai_candidates, allergen_parts, allergen_target_ids, dietary_parts
 from app.services.menus import parse_timestamp
 
 PAGE_SIZE = 1000
@@ -149,11 +149,7 @@ def representative_dishes(dishes: list[PublishedDish]) -> list[PublishedDish]:
 
 
 def _allergen_targets(dish: PublishedDish, allergen_ids: list[int] | None, masters: dict[int, MasterName]) -> list[int]:
-    if allergen_ids is not None:
-        ids = allergen_ids
-    else:
-        ids = [i for i, c in ai_candidates(dish.ai_result, "allergens", "allergen_id").items() if c.status != "unknown"]
-    return sorted(set(ids), key=lambda i: masters[i].display_order)
+    return allergen_target_ids(dish.ai_result, allergen_ids, masters)
 
 
 def _history(answers: list[PublishedAnswer], name_key: str, item_id: int) -> list[HistoryAnswer]:

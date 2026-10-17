@@ -6,12 +6,17 @@
 
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.schemas.common import Locale, StrictModel, UtcDatetime
 from app.services.answers import AllergenAnswer, DietaryAnswer
+from app.services.ai_classification import (
+    ALLERGEN_STATUS_BY_SOURCE,
+    DIETARY_STATUS_BY_SOURCE,
+    validate_ai_classification,
+)
 
-PromptVersion = Literal["v4"]
+PromptVersion = Literal["v4", "v5"]
 Source = Literal["menu_text", "recipe_inference", "dish_name_inference", "unavailable"]
 
 
@@ -29,12 +34,22 @@ class AllergenAi(StrictModel):
     evidence: str
     weight: float | None = Field(description="根拠の分類ごとの重み (c+1)/(n+2)。検証データがないMVPでは常にnull。")
 
+    @model_validator(mode="after")
+    def _check_classification(self) -> "AllergenAi":
+        validate_ai_classification(self.status, self.source, self.evidence, ALLERGEN_STATUS_BY_SOURCE)
+        return self
+
 
 class DietaryAi(StrictModel):
     status: Literal["explicit_conflict", "possible_conflict", "unknown"]
     source: Source
     evidence: str
     weight: float | None
+
+    @model_validator(mode="after")
+    def _check_classification(self) -> "DietaryAi":
+        validate_ai_classification(self.status, self.source, self.evidence, DIETARY_STATUS_BY_SOURCE)
+        return self
 
 
 class AllergenCurrentAnswer(StrictModel):

@@ -4,7 +4,7 @@
 
 - 本書を基に作成した `contracts/openapi.yaml` を、実装の `/openapi.json` と一致させる。2026-10-17に全17操作を照合した（`apps/api/scripts/compare_openapi.py`、実際の応答と契約の例を契約のスキーマで検証する `apps/api/tests/test_openapi_contract.py`）。
 - 技術スタック・環境設定は [apps/api/README.md](../apps/api/README.md) を参照する。
-- VLMのプロンプトv4と出力のJSON Schemaは `apps/api/prompts/menu_analysis.md`・`apps/api/contracts/menu_analysis.schema.json`（VercelのRoot Directory `apps/api` に含めるため、この配下に置く）。APIの実装・検証の結果は [API README](../apps/api/README.md) に記録する。
+- VLMのプロンプトv5と出力のJSON Schemaは `apps/api/prompts/menu_analysis.md`・`apps/api/contracts/menu_analysis.schema.json`（VercelのRoot Directory `apps/api` に含めるため、この配下に置く）。既存v4の読み取りも維持する。APIの実装・検証の結果は [API README](../apps/api/README.md) に記録する。
 
 ## 共通
 
@@ -184,7 +184,7 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
   "analysis_token": "<解析用トークン（この応答でだけ返す）>",
   "analysis_expires_at": "2026-10-18T03:00:00Z",
   "ai_model": "gemini-3.8-flash",
-  "prompt_version": "v4",
+  "prompt_version": "v5",
   "analyzed_at": "2026-10-17T03:00:00Z",
   "locale": "en",
   "dishes": [
@@ -283,8 +283,8 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 1. 容量、MIME、実際の画像形式、画素数を検証する。EXIFの向きを反映し、不要なメタデータを取り除く。
 2. `google_place_id` があれば、Place Details（`id` のみ）で存在を確認する。存在しなければ404 `place_not_found`。
 3. Geminiへ、画像とアレルゲン・食事制限のマスタを送る。利用者が選択した設定は送らない。出力を `contracts/menu_analysis.schema.json` で検証する。画像内の文章は入力データとして扱い、そこに書かれた指示には従わない。
-4. 未知・重複したアレルゲンID・食事制限ID、無効な価格、20料理超過を拒否する。読めない料理は返さず、0料理なら422 `unreadable_menu`。
-5. アレルゲン候補の根拠を、後述の「AIの候補」の規則で正規化する。料理名から照合用のキー（`name_key`）を作る。
+4. 未知のアレルゲンID・食事制限ID、無効な価格、20料理超過、フィールド・型・列挙値などの構造不正を502で拒否する。読めない料理は返さず、0料理なら422 `unreadable_menu`。
+5. アレルゲン・食事制限候補を、後述の「AIの候補」の規則で項目単位で正規化する。正規化後の組み合わせと根拠を検証し、同じ項目の重複を優先順で1件にする。料理名から照合用のキー（`name_key`）を作る。
 6. 店舗があれば、`restaurants` に Place ID を登録する（既にあれば再利用）。
 7. 非公開Storageへランダムなパスで画像を保存する。`save_menu_analysis` の1回のRPCで、メニューと全料理を登録する。ログイン中は検証済み所有者IDを渡し、DBから登録時同意を読み取って保存する。DB登録に失敗したら、画像をStorage APIで削除する。
 8. 店舗があれば、同じ店舗・同じ `name_key` の過去の店員確認を集め、「判定アルゴリズム」で判定を計算する（保存しない）。
@@ -305,7 +305,7 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 
 | クエリ | 必須 | 内容 |
 |---|---|---|
-| `allergen_ids` | 任意 | アレルゲンの判定の対象（カンマ区切り）。省略時はAIの候補 |
+| `allergen_ids` | 任意 | アレルゲンの判定の対象（カンマ区切り）。省略時はAIが明示した候補（不明を含む） |
 | `dietary_restriction_ids` | 任意 | 食事制限の判定の対象（カンマ区切り）。省略時は食事制限の判定なし |
 | `locale` | 任意 | `en` のみ（MVP） |
 
@@ -581,7 +581,7 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 
 | クエリ | 必須 | 内容 |
 |---|---|---|
-| `allergen_ids` | 任意 | 閲覧者のアレルゲンID（カンマ区切り）。省略時は代表料理のAIの候補。DBには保存しない |
+| `allergen_ids` | 任意 | 閲覧者のアレルゲンID（カンマ区切り）。省略時は代表料理のAIが明示した候補（不明を含む）。DBには保存しない |
 | `dietary_restriction_ids` | 任意 | 食事制限ID（カンマ区切り）。省略時は食事制限の判定なし。DBには保存しない |
 | `locale` | 任意 | `en` のみ |
 
@@ -867,7 +867,13 @@ VLMが自己申告する確信度は使わない。各料理×項目の候補に
 | 3 | `dish_name_inference` | 料理名からの推定 | `possible` | `possible_conflict` |
 | — | `unavailable` | 記載なし・判読不能・根拠不足 | `unknown` | `unknown` |
 
-- 同じ料理・項目に複数の根拠がある場合、優先順位の最も高い一つだけを残す。`status` と `source` の組が上表と異なる出力は502 `invalid_ai_output`。
+- 4分類は根拠の種類であり、安全度や含有確率の4段階ではない。アレルゲン／食事制限の `status` は各3値、`source` は4値を維持する。
+- まず出力全体の構造・型・列挙値とマスタIDを検証する。その上で、許可された `status` と `source` の組が上表と異なる場合、または不明以外で根拠が空・空白だけの場合は、その料理×項目だけを `unknown`／`unavailable`／`evidence=""` へ復旧する。正しい不明も根拠を空に統一する。矛盾した判定を明示的な含有・抵触へ格上げしない。
+- 正規化後に組み合わせ・根拠を再検証し、同じ料理・項目の重複は上表の優先順位で一つだけ残す。同順位は先頭を採用する。有効な候補を、不整合から復旧した不明で消さない。
+- フィールド欠落・型不正・未知ID・未定義の列挙値（`supported`・`not_contains`等）・壊れたJSON・無効な料理情報は従来どおり502 `invalid_ai_output`。0料理は422。有効な料理があり全候補が不明なら201。Geminiの429・接続障害・タイムアウトや保存障害を不明の成功へ変換しない。
+- 正規化済みの候補を `ai_result` に保存し、API 5・6・7・17でも同じ不明を再利用する。`allergen_ids` 省略時はAIが明示した候補を不明も含めて返し、未列挙の全29項目を補わない。指定時は指定項目すべてを返す。食事制限は指定時だけ返す。選択設定は保存しない。
+- AIの不明は店員回答ではない。未回答は `current_answer=null` のままで、確認の件数や履歴のα・βへ加算しない。`recheck_current_answer` は店員の不明回答専用。原因コードと復旧件数だけをログへ記録する。
+- 新規解析はプロンプトv5。API 5・17は保存済みv4も受け付け、その版を返す。既存データの一括書換えは行わない。
 - `menu_text` の `evidence` には対応する原文、推定の `evidence` には推定理由を入れる。「卵不使用」「除去可能」や別の料理の注記を含有の記載にしない。
 - 記載がないことを「含まない」と解釈しない。候補がない項目は `unknown`／`unavailable`。AIは交差接触・不使用・食事制限への対応可を判断しない。
 - `weight`：根拠の分類ごとの重み `w=(c+1)/(n+2)`（n：その分類で候補を出した検証件数、c：店舗のレシピ・原材料表示で含有を確認できた件数）。検証データがないMVPでは常に `null` とし、根拠の原文・推定理由を表示する。重みが低くても候補を「なし」に変えない。

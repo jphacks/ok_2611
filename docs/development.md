@@ -46,7 +46,7 @@ DB（`supabase/`）は5つのマイグレーションを2026-10-17にSupabaseプ
 |---|---|
 | `contracts/openapi.yaml` | 作成済み。API仕様の17操作。解析用・アカウント用のBearer認証を区別する。2026-10-17に実装の `/openapi.json` と照合済み（`apps/api/tests/test_openapi_contract.py`） |
 | `apps/api/contracts/menu_analysis.schema.json` | 作成済み（03）。VLM出力の契約。アレルゲン29種・食事制限4種、候補と根拠の組、`translations.en`、料理・価格の制約。未定義フィールドを拒否する。VercelのRoot Directory `apps/api` に含めるためAPIの配下に置く |
-| `apps/api/prompts/menu_analysis.md` | 作成済み（03）。v4。全マスタを入力し、利用者の選択設定を渡さず、画像内の指示に従わない |
+| `apps/api/prompts/menu_analysis.md` | 作成済み（03・11）。v5。全マスタを入力し、利用者の選択設定を渡さず、画像内の指示に従わない。分類不整合は限定的に不明へ復旧。[実画像・代表例の評価記録](../apps/api/tests/fixtures/ai_unknown_evaluation.md) |
 | `apps/api/.env.example`・`apps/mobile/.env.example` | 各READMEの環境変数。秘密値は空欄にする（APIは作成済み） |
 | `apps/mobile/vercel.json` | Expo WebのSPAリライト |
 
@@ -68,7 +68,7 @@ DB（`supabase/`）は5つのマイグレーションを2026-10-17にSupabaseプ
 |---|---|
 | Gemini | `gemini-3.8-flash`（2026-10-17に実キーで画像入力・構造化出力を確認）。思考レベル `LOW` |
 | AI待機 | アプリ側45秒。Vercelの `maxDuration` は120秒（`apps/api/vercel.json`） |
-| プロンプト | `v4`。バージョンはAPIが付与 |
+| プロンプト | 新規 `v5`、既存データの読取は `v4` も対応。バージョンはAPIが付与 |
 | 回答の半減期 | `STORE_ANSWER_HALF_LIFE_DAYS=30`。食品情報の有効期限を意味しない |
 | パスワード | Argon2id。`argon2-cffi` の既定パラメータを動作確認し、バージョンを固定 |
 | 色 | 暫定 `#004539`＋白。正式な配色は未確定 |

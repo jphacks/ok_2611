@@ -63,7 +63,7 @@
 |---|---|---|
 | AI | `ai.status=explicit_present`（メニューに記載） | Listed on the menu: 「原文」 |
 | AI | `ai.status=possible`（参照レシピ・料理名からの推定） | May contain (AI estimate) と推定理由。参照レシピはその店舗のレシピではないことを示す |
-| AI | `ai.status=unknown` | No information from the menu. 「含まれない」とは表示しない |
+| AI | `ai.status=unknown` | Unable to determine. Please ask staff. 「含まれない」とは表示しない |
 | 今回の回答 | `current_answer.answer=contains` | Staff answer: contains（日時） |
 | 今回の回答 | `does_not_contain` | Staff answer: not an ingredient（日時）。Cross-contact was not confirmed. |
 | 今回の回答 | `shared_utensils` | Staff answer: shares cooking utensils（日時）。Whether it is an ingredient was not confirmed. |
@@ -76,6 +76,7 @@
 - 履歴（`store_history`）は4択すべての件数・最終日時を優先して表示する。`score`（S）は「含まれる」「含まれない」を明示した回答内の傾向であり、含有確率・安全度として表示しない。表示する場合は件数と併記する。
 - 履歴は同じ店舗・料理名（`match_basis=name_key`）による暫定の照合で、店員の回答は未認証であることを示す。過去の状態を今回の調理へ自動適用しない。
 - AIの重み（`ai.weight`）はMVPでは常にnull。数値の代わりに根拠の原文・推定理由を表示する。
+- AIは `source` でメニュー記載・一般レシピ推定・料理名推定・不明の4分類を区別する。2種類の推定は根拠欄で説明し、検索していない一般レシピ知識を出典確認済みとは表示しない。不明は記載なしだけでなく根拠不足や分類不整合も含む。空配列は不使用・対応可を意味しない。利用者が選んだ対象IDをAPIへ送り、不明を店員確認から外さない。食事制限の不明も同じ案内文を使う。
 - 判定で料理を隠したり、店員確認の対象から外したりしない。⑪／⑪′では「今回の端末で回答を受け取った確認済み料理」と「その他の料理」を分け、各区画内は元のメニュー順にする。過去回答の集計だけで今回の確認済みにしない。
 - 一覧の上部に「Estimates only. Always confirm with restaurant staff.」を常に表示する。
 

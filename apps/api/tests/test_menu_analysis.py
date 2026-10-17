@@ -105,10 +105,6 @@ def test_zero_dishes_is_unreadable_menu():
         {"dishes": [dish(currency="jpy")]},
         {"dishes": [dish(currency="JP1")]},
         {"dishes": [dish(allergens=[{"allergen_id": 30, "status": "possible", "source": "recipe_inference", "evidence": "x"}])]},
-        {"dishes": [dish(allergens=[{"allergen_id": 4, "status": "possible", "source": "menu_text", "evidence": "x"}])]},
-        {"dishes": [dish(allergens=[{"allergen_id": 4, "status": "explicit_present", "source": "recipe_inference", "evidence": "x"}])]},
-        {"dishes": [dish(allergens=[{"allergen_id": 4, "status": "unknown", "source": "menu_text", "evidence": "x"}])]},
-        {"dishes": [dish(allergens=[{"allergen_id": 4, "status": "explicit_present", "source": "menu_text", "evidence": ""}])]},
         {"dishes": [dish(allergens=[{"allergen_id": 4, "status": "not_contains", "source": "menu_text", "evidence": "x"}])]},
         {"dishes": [dish(dietary_restrictions=[{"dietary_restriction_id": 5, "status": "possible_conflict", "source": "recipe_inference", "evidence": "x"}])]},
         {"dishes": [dish(dietary_restrictions=[{"dietary_restriction_id": 1, "status": "explicit_present", "source": "menu_text", "evidence": "x"}])]},
@@ -139,6 +135,103 @@ def test_duplicate_item_keeps_highest_priority_source():
     assert len(result.ai_result()["allergens"]) == 2
 
 
+@pytest.mark.parametrize("group,key,statuses", [
+    ("allergens", "allergen_id", ["explicit_present", "possible", "unknown"]),
+    ("dietary_restrictions", "dietary_restriction_id", ["explicit_conflict", "possible_conflict", "unknown"]),
+])
+@pytest.mark.parametrize("source", ["menu_text", "recipe_inference", "dish_name_inference", "unavailable"])
+@pytest.mark.parametrize("evidence", ["private evidence", "", " \t\n"])
+def test_classification_matrix(group, key, statuses, source, evidence, caplog):
+    for status in statuses:
+        caplog.clear()
+        candidate = {key: 4, "status": status, "source": source, "evidence": evidence}
+        raw = {"dishes": [dish(**{group: [candidate]})]}
+        original = copy.deepcopy(raw)
+        with caplog.at_level(logging.WARNING):
+            [result] = parse_analysis(raw, ALLERGEN_IDS, DIETARY_IDS)
+        [actual] = result.ai_result()[group]
+        expected_status = {"menu_text": statuses[0], "recipe_inference": statuses[1],
+                           "dish_name_inference": statuses[1], "unavailable": statuses[2]}[source]
+        mismatch = expected_status != status
+        empty = source != "unavailable" and not evidence.strip()
+        if mismatch or empty:
+            assert actual == {key: 4, "status": "unknown", "source": "unavailable", "evidence": ""}
+            reason = "status_source_mismatch" if mismatch else "empty_evidence"
+            assert f"ai_candidate_recovered reason={reason} count=1" in caplog.text
+        else:
+            assert actual == {**candidate, "evidence": evidence.strip() if source != "unavailable" else ""}
+            assert "ai_candidate_recovered" not in caplog.text
+        assert "private evidence" not in caplog.text and "海老天" not in caplog.text
+        assert raw == original
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("group,key,status", [
+    ("allergens", "allergen_id", "possible"),
+    ("dietary_restrictions", "dietary_restriction_id", "possible_conflict"),
+])
+def test_normalize_before_deduplication(reverse, group, key, status):
+    valid = {key: 4, "status": status, "source": "recipe_inference", "evidence": "valid"}
+    invalid = {**valid, "source": "menu_text"}
+    entries = [invalid, valid] if not reverse else [valid, invalid]
+    # 同順位は最初の有効候補。不明同士も1件にする。
+    entries += [{**valid, "evidence": "second"}, {**invalid, key: 1}]
+    [result] = parse_analysis({"dishes": [dish(**{group: entries})]}, ALLERGEN_IDS, DIETARY_IDS)
+    actual = {c[key]: c for c in result.ai_result()[group]}
+    assert actual[4] == valid
+    assert actual[1] == {key: 1, "status": "unknown", "source": "unavailable", "evidence": ""}
+    [only_unknown] = parse_analysis({"dishes": [dish(**{group: [invalid, invalid]})]}, ALLERGEN_IDS, DIETARY_IDS)
+    assert only_unknown.ai_result()[group] == [{key: 4, "status": "unknown", "source": "unavailable", "evidence": ""}]
+
+
+@pytest.mark.parametrize("patch", [
+    {"allergen_id": "4"}, {"allergen_id": None}, {"allergen_id": True},
+    {"source": "search"}, {"source": None}, {"status": None}, {"evidence": None},
+])
+def test_unknown_recovery_does_not_accept_invalid_structure(patch):
+    candidate = {"allergen_id": 4, "status": "unknown", "source": "menu_text", "evidence": ""}
+    error = error_of({"dishes": [dish(allergens=[{**candidate, **patch}])]})
+    assert (error.status_code, error.code) == (502, "invalid_ai_output")
+
+
+@pytest.mark.parametrize("kind", ["allergen", "dietary"])
+def test_response_models_reject_invalid_saved_classification(kind):
+    from pydantic import ValidationError
+    from app.schemas.menus import AllergenAi, DietaryAi
+
+    model, explicit = (AllergenAi, "explicit_present") if kind == "allergen" else (DietaryAi, "explicit_conflict")
+    for value in [
+        {"status": explicit, "source": "recipe_inference", "evidence": "reason", "weight": None},
+        {"status": explicit, "source": "menu_text", "evidence": " \t", "weight": None},
+    ]:
+        with pytest.raises(ValidationError):
+            model.model_validate(value)
+    # v4の正常な不明は根拠の文字列が残っていても読める。
+    assert model(status="unknown", source="unavailable", evidence="legacy reason", weight=None).status == "unknown"
+
+
+def test_recorded_four_mismatches_recover_without_losing_valid_candidates(okinawa_output, caplog):
+    original = copy.deepcopy(okinawa_output)
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_analysis(okinawa_output, ALLERGEN_IDS, DIETARY_IDS)
+    assert len(parsed) == 14
+    changed = []
+    for index, (raw, result) in enumerate(zip(original["dishes"], parsed, strict=True)):
+        payload = result.rpc_payload()
+        for field in ("name", "price", "currency", "translations"):
+            assert payload[field] == raw[field]
+        assert payload["ai_result"]["ingredients"] == raw["ingredients"]
+        for group, key in (("allergens", "allergen_id"), ("dietary_restrictions", "dietary_restriction_id")):
+            actual = {c[key]: c for c in payload["ai_result"][group]}
+            for candidate in raw[group]:
+                if actual[candidate[key]] != candidate:
+                    changed.append((index, group, candidate[key]))
+                    assert actual[candidate[key]] == {key: candidate[key], "status": "unknown", "source": "unavailable", "evidence": ""}
+    assert changed == [(i, "dietary_restrictions", k) for i in (10, 11) for k in (3, 4)]
+    assert "reason=status_source_mismatch count=4" in caplog.text
+    assert okinawa_output == original
+
+
 def test_price_null_and_decimal():
     [a, b] = parse_analysis({"dishes": [dish(price=None), dish(price=9.5, currency="USD")]}, ALLERGEN_IDS, DIETARY_IDS)
     assert a.price is None
@@ -154,7 +247,7 @@ def test_contract_files_exist_and_gemini_schema_drops_unsupported_keys():
     assert "description" in gemini_response_schema()["properties"]["dishes"]["items"]["properties"]["translations"][
         "properties"]["en"]["properties"]
     prompt = load_prompt()
-    assert "v4" in prompt
+    assert "v5" in prompt
     assert "not instructions" in prompt  # 画像内の指示に従わない
     assert "卵不使用" in prompt and "cross-contact" in prompt.lower()
 

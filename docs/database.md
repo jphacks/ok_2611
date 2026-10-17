@@ -84,7 +84,7 @@ erDiagram
 | `version` | integer | 既定1。MVPでは編集しないため常に1 |
 | `ai_result` | jsonb | 必須のオブジェクト。`{"ingredients":[],"allergens":[],"dietary_restrictions":[]}` 形式 |
 | `ai_model` | text | 必須。APIが付与 |
-| `prompt_version` | text | 必須。APIが現行の `v4` を付与 |
+| `prompt_version` | text | 必須。新規解析はAPIが `v5` を付与。保存済みの `v4` も読取可能 |
 | `analyzed_at` / `created_at` | timestamptz | `now()` |
 
 作成後は更新できない（`trg_dish_immutable`）。
@@ -226,6 +226,8 @@ erDiagram
 いずれも `security invoker`・`search_path` 空で定義し、`service_role` だけが実行できる。置換RPCは呼び出し元の権限で動くため、本人設定の2テーブルには `service_role` の `insert`・`delete` も付与する。APIは削除・追加を別々に呼ばず、RPCを通す。引数はPostgREST（Supabase SDKの `rpc`）からJSONで渡す。呼び出し例は [API README](../apps/api/README.md#supabaseの利用) を参照する。
 
 ### `save_menu_analysis(p_restaurant_id, p_image_path, p_analysis_token_hash, p_dishes, p_ai_model, p_prompt_version, p_analysis_expires_at, p_account_id)` → `uuid`
+
+APIは構造・マスタIDを検証し、許可値内のstatus/source矛盾や空の根拠だけを `unknown`／`unavailable`／空の `evidence` にしてから `dishes.ai_result` に保存する。既存RPC・JSON形状を維持し、マイグレーションと旧データの書換えは不要。AIの不明によって確認セッション・店員回答を作成せず、利用者の選択設定も保存しない。
 
 メニュー1件と料理1〜20件を、1つのトランザクションで登録し、`menu_id` を返す。途中で失敗すると、メニューも含めてロールバックする。`p_dishes`（JSON配列）の各要素は `name`・`name_key`（文字列）、`translations`・`ai_result`（オブジェクト）、`price`（数値かnull、省略可）、`currency`（文字列かnull、省略時 `JPY`）だけを持ち、それ以外のキーは拒否する。RPCが配列の順序を1始まりの `position` として保存する。`p_analysis_token_hash` は小文字16進64文字、`p_analysis_expires_at` 省略時は `now() + 24時間`。
 

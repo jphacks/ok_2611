@@ -127,11 +127,16 @@ def test_aggregates_public_answers_of_all_users(client, views, fake_supabase):
 
 
 def test_targets_default_to_ai_candidates(client, views):
-    views["published_menus"] = [menu_row("m1", "d1", "海老天そば", NOW, ai_result(SHRIMP, BUCKWHEAT))]
+    unknown = {"allergen_id": 2, "status": "unknown", "source": "unavailable", "evidence": ""}
+    views["published_menus"] = [menu_row("m1", "d1", "海老天そば", NOW, ai_result(SHRIMP, BUCKWHEAT, unknown))]
     dish = client.get(URL).json()["dishes"][0]
-    assert [a["allergen_id"] for a in dish["allergens"]] == [6, 4]  # 表示順（そば→えび）
+    assert [a["allergen_id"] for a in dish["allergens"]] == [2, 6, 4]  # 明示的不明も保持。全29項目は補わない。
+    assert dish["allergens"][0]["ai"] == {"status": "unknown", "source": "unavailable", "evidence": "", "weight": None}
     assert dish["dietary_restrictions"] == []
     assert all(a["store_history"] is None for a in dish["allergens"])
+    selected = client.get(URL + "?allergen_ids=2,1").json()["dishes"][0]
+    assert [a["allergen_id"] for a in selected["allergens"]] == [1, 2]
+    assert all(a["ai"]["status"] == "unknown" for a in selected["allergens"])
 
 
 def test_unknown_only_has_null_score(client, views):
@@ -140,6 +145,15 @@ def test_unknown_only_has_null_score(client, views):
     egg = client.get(URL + "?allergen_ids=1").json()["dishes"][0]["allergens"][0]
     assert egg["store_history"]["answer_counts"]["unknown"] == 1
     assert egg["store_history"]["score"] is None
+
+
+def test_invalid_saved_classification_is_not_published_or_logged(client, views, caplog):
+    invalid = {**SHRIMP, "source": "recipe_inference", "evidence": "private-invalid-evidence"}
+    views["published_menus"] = [menu_row("m1", "d1", "soba", NOW, ai_result(invalid))]
+    response = client.get(URL)
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert "private-invalid-evidence" not in response.text + caplog.text
 
 
 @pytest.mark.parametrize(
