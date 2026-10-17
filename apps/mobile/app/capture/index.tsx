@@ -95,13 +95,6 @@ export default function CaptureScreen() {
           style={[styles.shutter, busy && styles.shutterDisabled]}
         ><View style={styles.shutterInner} /></Pressable>
       </View>
-      <View style={styles.navigation}>
-        <Pressable onPress={() => router.replace("/map")} accessibilityRole="button" style={styles.tab}>
-          <Text style={styles.navIcon}>⌖</Text><Text style={styles.navText}>Map</Text>
-        </Pressable>
-        <View style={styles.tab}><Text style={styles.navIconSelected}>⌗</Text><Text style={styles.navSelected}>Scan</Text></View>
-        <Pressable onPress={() => router.push("/profiles")} accessibilityRole="button" style={styles.tab}><Text style={styles.navIcon}>♟</Text><Text style={styles.navText}>Profile</Text></Pressable>
-      </View>
       {createElement("input", {
         ref: fileRef,
         type: "file",
@@ -130,11 +123,5 @@ const styles = StyleSheet.create({
   shutter: { height: 72, width: 72, borderRadius: 36, borderWidth: 4, borderColor: colors.white, alignSelf: "center", justifyContent: "center", alignItems: "center", marginTop: 26 },
   shutterInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.white },
   shutterDisabled: { opacity: 0.4 },
-  navigation: { height: 72, flexDirection: "row", justifyContent: "space-around", alignItems: "center", backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.line },
-  tab: { minWidth: 76, alignItems: "center", justifyContent: "center" },
-  navIcon: { color: colors.muted, fontSize: 22, lineHeight: 23 },
-  navIconSelected: { color: colors.green, fontSize: 22, lineHeight: 23 },
-  navText: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  navSelected: { color: colors.green, fontWeight: "700", fontSize: 12, marginTop: 2 },
   error: { color: "#FFB4A9", marginTop: 10, lineHeight: 20, textAlign: "center" },
 });

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { ApiError, isRegisterApiConfigured, registerAccount, saveAccountDetails, saveAccountToken } from "../src/api/auth";
+import { ApiError, isRegisterApiConfigured, registerAccount, saveAccountDetails } from "../src/api/auth";
+import { startAccountSession } from "../src/features/account/session";
 import { FormField } from "../src/components/FormField";
 import { Page } from "../src/components/Page";
 import { PrimaryButton } from "../src/components/PrimaryButton";
@@ -44,8 +45,7 @@ export default function RegisterScreen() {
         password,
         publish_consent: true,
       });
-      saveAccountToken(result.access_token, result.account.id);
-      saveAccountDetails({ nickname: result.account.nickname, email: result.account.email, preview: false });
+      startAccountSession(result, []);
       router.replace("/profiles/setup?created=1");
     } catch (error) {
       if (error instanceof ApiError) {

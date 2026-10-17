@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 import { isAllergenSaveConfigured, saveAllergens } from "../../src/api/allergens";
-import { getAccountToken } from "../../src/api/auth";
+import { clearAccountSession, getAccountToken, isAccountAuthError } from "../../src/api/auth";
 import { Page } from "../../src/components/Page";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { allergenOptions } from "../../src/content/preferences";
-import { saveSelectedAllergenIds } from "../../src/features/profile/selection";
+import { getSelectedAllergenIds, saveSelectedAllergenIds } from "../../src/features/profile/selection";
 import { AllergenChoices } from "../../src/features/profile/AllergenChoices";
 import { colors } from "../../src/theme";
 
@@ -16,6 +16,10 @@ export default function ProfileSetupScreen() {
   const [selectionError, setSelectionError] = useState(false);
   const [checking, setChecking] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [needsLogin, setNeedsLogin] = useState(false);
+
+  // After ④ the account's saved allergens are already in this tab; start from them.
+  useEffect(() => { setSelectedAllergens(new Set(getSelectedAllergenIds())); }, []);
 
   function toggleAllergen(id: number) {
     if (checking) return;
@@ -52,6 +56,7 @@ export default function ProfileSetupScreen() {
           } else {
             const token = getAccountToken();
             if (!token) {
+              setNeedsLogin(true);
               setSaveError("Log in before saving your profile.");
             } else {
               const saved = await saveAllergens(submittedIds, token);
@@ -67,8 +72,14 @@ export default function ProfileSetupScreen() {
           setSaveError("Could not verify your selection. Please try again.");
         }
       }
-    } catch {
-      setSaveError("Could not save your profile. Please try again.");
+    } catch (cause) {
+      if (isAccountAuthError(cause)) {
+        clearAccountSession();
+        setNeedsLogin(true);
+        setSaveError("Your login has expired. Please log in again.");
+      } else {
+        setSaveError("Could not save your profile. Please try again.");
+      }
     } finally {
       setChecking(false);
     }
@@ -99,6 +110,7 @@ export default function ProfileSetupScreen() {
       ) : null}
       <View style={styles.actions}>
         <PrimaryButton label={checking ? "Checking..." : "Save profile"} onPress={saveProfile} disabled={checking} />
+        {needsLogin ? <PrimaryButton label="Log in" secondary onPress={() => router.push("/login")} /> : null}
       </View>
     </Page>
   );

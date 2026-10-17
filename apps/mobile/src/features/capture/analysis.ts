@@ -19,3 +19,10 @@ export function getMenuAnalysis(menuId: string): MenuAnalysis | null {
     return null;
   }
 }
+
+export function clearMenuAnalyses(): void {
+  if (typeof window === "undefined") return;
+  for (const key of Object.keys(window.sessionStorage)) {
+    if (key.startsWith(prefix)) window.sessionStorage.removeItem(key);
+  }
+}

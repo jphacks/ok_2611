@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { ApiError, isLoginApiConfigured, loginAccount, saveAccountDetails, saveAccountToken } from "../src/api/auth";
+import { getMyAllergens } from "../src/api/allergens";
+import { ApiError, isLoginApiConfigured, loginAccount } from "../src/api/auth";
+import { startAccountSession } from "../src/features/account/session";
 import { FormField } from "../src/components/FormField";
 import { Page } from "../src/components/Page";
 import { PrimaryButton } from "../src/components/PrimaryButton";
@@ -26,8 +28,15 @@ export default function LoginScreen() {
     setSubmitting(true);
     try {
       const result = await loginAccount({ email: email.trim().toLowerCase(), password });
-      saveAccountToken(result.access_token, result.account.id);
-      saveAccountDetails({ nickname: result.account.nickname, email: result.account.email, preview: false });
+      // ④ loads the saved allergens before ⑤ so the setup screen starts from the account's selection.
+      let saved: { allergen_ids: number[] };
+      try {
+        saved = await getMyAllergens(result.access_token);
+      } catch {
+        setError("Could not load your saved allergens. Please try logging in again.");
+        return;
+      }
+      startAccountSession(result, saved.allergen_ids);
       router.replace("/profiles/setup");
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "rate_limited") {

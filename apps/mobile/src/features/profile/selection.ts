@@ -23,3 +23,7 @@ export function getSelectedAllergenIds(): number[] {
     return [];
   }
 }
+
+export function clearSelectedAllergenIds(): void {
+  if (typeof window !== "undefined") window.sessionStorage.removeItem(storageKey);
+}

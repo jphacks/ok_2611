@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { router } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { isAllergenSaveConfigured, saveAllergens } from "../../src/api/allergens";
-import { getAccountToken } from "../../src/api/auth";
+import { clearAccountSession, getAccountToken, isAccountAuthError } from "../../src/api/auth";
 import { allergenOptions } from "../../src/content/preferences";
 import { AllergenChoices } from "../../src/features/profile/AllergenChoices";
 import { getSelectedAllergenIds, saveSelectedAllergenIds } from "../../src/features/profile/selection";
@@ -12,6 +12,7 @@ export default function ProfileEditScreen() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
+  const [needsLogin, setNeedsLogin] = useState(false);
 
   useEffect(() => { setSelected(new Set(getSelectedAllergenIds())); }, []);
 
@@ -50,6 +51,7 @@ export default function ProfileEditScreen() {
       if (isAllergenSaveConfigured) {
         const token = getAccountToken();
         if (!token) {
+          setNeedsLogin(true);
           setError("Log in before saving your profile.");
           return;
         }
@@ -61,8 +63,14 @@ export default function ProfileEditScreen() {
       }
       saveSelectedAllergenIds(ids);
       router.replace("/profiles?updated=1");
-    } catch {
-      setError("Could not save your allergens. Please try again.");
+    } catch (cause) {
+      if (isAccountAuthError(cause)) {
+        clearAccountSession();
+        setNeedsLogin(true);
+        setError("Your login has expired. Please log in again.");
+      } else {
+        setError("Could not save your allergens. Please try again.");
+      }
     } finally {
       setChecking(false);
     }
@@ -87,14 +95,12 @@ export default function ProfileEditScreen() {
         />
       </ScrollView>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      {needsLogin ? (
+        <Pressable accessibilityRole="button" onPress={() => router.push("/login")}><Text style={styles.login}>Log in</Text></Pressable>
+      ) : null}
       <Pressable accessibilityRole="button" disabled={checking} onPress={() => void save()} style={[styles.save, checking && styles.disabled]}>
         <Text style={styles.saveText}>{checking ? "Checking…" : "Save changes"}</Text>
       </Pressable>
-      <View style={styles.tabBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.push("/map")}><Text style={styles.tab}>⌖{"\n"}Map</Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.push("/capture")}><Text style={styles.tab}>▣{"\n"}Scan</Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.replace("/profiles")}><Text style={[styles.tab, styles.activeTab]}>●{"\n"}Profile</Text></Pressable>
-      </View>
     </View>
   );
 }
@@ -106,9 +112,7 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 5 },
   error: { color: colors.error, fontSize: 13, marginBottom: 8, marginHorizontal: 20 },
   save: { backgroundColor: colors.green, borderRadius: 28, minHeight: 54, alignItems: "center", justifyContent: "center", marginHorizontal: 20, marginBottom: 16 },
+  login: { color: colors.green, fontSize: 14, fontWeight: "700", textAlign: "center", marginBottom: 12, padding: 6 },
   disabled: { opacity: 0.5 },
   saveText: { color: colors.white, fontSize: 16, fontWeight: "800" },
-  tabBar: { flexDirection: "row", justifyContent: "space-around", borderTopWidth: 1, borderColor: colors.line, paddingTop: 16, paddingBottom: 25 },
-  tab: { color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 20 },
-  activeTab: { color: colors.green, fontWeight: "700" },
 });

@@ -2,7 +2,7 @@
 
 Meelyze+ のフロントエンド。React Native + Expoで作るスマートフォン向けWebアプリ。利用者の端末1台で完結し、店員は利用者が差し出した端末の「店員確認カード」で回答する。iOS／Androidネイティブ版は対象外。
 
-> 2026-10-18時点：主要画面・APIクライアント・沖縄メニューのプレビューを作成済み。外部APIの接続先は未設定で、実データによる一連の操作は未結合。店員回答はブラウザ内への仮保存であり、FastAPIへの保存・公開はまだ行わない。
+> 2026-10-18時点：主要画面を本番API（`https://meelyze-api.vercel.app/api/v1`）へ接続済み。登録・ログイン・本人情報／アレルゲンの取得と保存・解析・結果の再取得・店員確認の一括保存をFastAPIで行う。沖縄メニューのプレビュー（`?demo=okinawa`）だけは引き続きブラウザ内の仮保存。実API・実機での一連の操作は未検証（後述）。
 
 作業時は [CLAUDE.md](CLAUDE.md) を参照する。要件・API・画面の正本は [要件](../../requirements.md)、[開発・検証](../../docs/development.md)、[画面仕様](../../docs/screens.md)、[API仕様](../../docs/api.md)。本書は現在のモバイル実装と、未結合・未実装の範囲を説明する。
 
@@ -31,16 +31,16 @@ Meelyze+ のフロントエンド。React Native + Expoで作るスマートフ�
 |---|---|
 | 初回ウォークスルー（全ルート共通） | 初回アクセス時のみ4枚の画像と説明を表示。通常は英語、URLの `?lang=ja` でツアーのみ日本語。進む・戻る・スワイプ・スキップに対応し、終了後は元のアクセス先へ。表示済み状態はブラウザに保存 |
 | ① `/`、② `/onboarding` | 開始画面、利用規約モーダルと同意導線 |
-| ③ `/register` | 入力検証と登録クライアントを作成済み。API未設定時は端末内のプレビュー情報を保存して設定画面へ進む。アカウント・トークンは発行しない |
-| ④ `/login` | ログイン画面とクライアントを作成済み。外部APIは未接続 |
-| ⑤ `/profiles/setup` | アレルゲン29品目から1品目以上を選択。補助APIで検証後、タブ内に保存。外部API設定時の本人設定保存処理あり |
+| ③ `/register` | `POST /auth/register`。成功時に前のアカウントのタブ内データを消してトークンを保存し⑤へ。公開同意はユーザー指示により現状 `true` 固定（画面での選択欄なし。仕様の③とは差分） |
+| ④ `/login` | `POST /auth/login` の後に `GET /me/allergens` で保存済みアレルゲンを取得し、⑤の初期選択にして進む |
+| ⑤ `/profiles/setup` | アレルゲン29品目から1品目以上を選択（保存済みの選択を初期表示）。補助APIで検証後、`PUT /me/allergens` で保存してからタブ内にも保持 |
 | ⑥ `/map` | `Under construction.` の仮画面。店舗確認画面へ進める |
 | ⑧ `/places/select` | 引き継がれた店舗候補の確認、またはスキップ。候補を検索・取得する処理は未実装 |
-| ⑨ `/capture`、⑩ `/capture/preview` | 撮影・画像選択、画像加工、写真確認、再撮影、解析リクエスト処理を作成済み。解析APIは未接続 |
-| ⑪ `/menu?id=<menu_id>`、⑫ 詳細シート | 解析結果のキャッシュ／API取得結果から一覧と詳細を表示。確認済み料理とAI推定の料理を分ける |
-| ⑬ `/confirm?id=<menu_id>&dish_id=<dish_id>`、⑭ 同意モーダル | 1料理×選択アレルゲンの4択回答。全問回答を検証して同意を取得し、タブ内へ仮保存。記憶済みの同意を再利用する処理あり |
-| ⑮ `/result?id=<menu_id>&dish_id=<dish_id>` | タブ内の仮保存回答を表示し、同じメニューの一覧へ戻る。FastAPIの確認セッションによる結果取得は未結合 |
-| ⑯ `/profiles`、⑰ `/profiles/edit` | タブ内の本人情報・アレルゲンの表示と編集。本人情報・設定のサーバーからの取得、読み込み履歴は未実装 |
+| ⑨ `/capture`、⑩ `/capture/preview` | 撮影・画像選択、画像加工、写真確認、再撮影。`Analyze` で `POST /menus/analyze`。401ではトークンを破棄してログインを案内 |
+| ⑪ `/menu?id=<menu_id>`、⑫ 詳細シート | 表示のたびに `GET /menus/{menu_id}`（解析用トークン）で取り直し、`current_answer` の有無で確認済み料理とAI推定の料理を分ける。取得結果でタブ内のキャッシュを更新。410は再撮影を案内 |
+| ⑬ `/confirm?id=<menu_id>&dish_id=<dish_id>`、⑭ 同意モーダル | 1料理×選択アレルゲンの4択（含まれる／同じ料理器具を使っている／含まれない／わからない）。全問回答を検証し、⑭の選択で `POST /menus/{menu_id}/confirmations` に回答と店員の公開可否を一括送信。`request_id` は下書きごとに作り、回答を変えない再送では同じIDを使う。成功後「お客様に端末をお返しください」→⑮。記憶済みの店員同意を再利用する処理はユーザー指示により維持（仕様の⑭とは差分） |
+| ⑮ `/result?id=<menu_id>&dish_id=<dish_id>` | 確認APIの応答（`answer_label`・AIの候補・`notices`・`is_public`）を表示し、同じメニューの一覧へ戻る。応答がタブにない場合は⑪で取得した `current_answer` を表示（公開状態は表示しない） |
+| ⑯ `/profiles`、⑰ `/profiles/edit` | ⑯は `GET /me` のニックネーム・メールを表示。⑰は `PUT /me/allergens` で保存。読み込み履歴（API 16・17）とログアウト画面は未実装 |
 
 現在のモバイル方針では食事制限4項目の選択欄とゲスト導線を除外し、実画像の解析にはログイン済みのアカウント用トークンを必須としている。複数人プロファイルの切替は未実装。全体仕様との差分は [モバイル開発ガイド](CLAUDE.md) も参照する。
 
@@ -59,6 +59,8 @@ Meelyze+ のフロントエンド。React Native + Expoで作るスマートフ�
 | `assets/` | アプリアイコン・ロゴ |
 | `api/index.ts` | VercelからExpoのサーバー処理へ渡すハンドラー |
 | `.env.example`、`vercel.json` | 環境変数の例、Vercelのビルド・実行設定 |
+
+Map・Scan・Profileのフッターは `src/components/BottomNavigation.tsx` に共通化し、`app/_layout.tsx` から `/map`・`/capture`・`/menu`・`/profiles`・`/profiles/edit` に表示する。画面下部に固定し、本文側で72px＋下部セーフエリアを確保する。最大幅は本文と同じ440px。選択中の項目を緑色で示し、初回ツアー中は非表示にする。
 
 ## セットアップ・コマンド
 
@@ -86,24 +88,27 @@ npm start
 
 ### FastAPIの接続先
 
-接続先は [src/api/endpoints.ts](src/api/endpoints.ts) に集約している。現在は全項目が空文字で、未設定の外部APIへの送信は行わない。実URLの設定と結合確認は今後の作業となる。
+接続先は [src/api/endpoints.ts](src/api/endpoints.ts) に集約している。ベースURLの既定値は `https://meelyze-api.vercel.app/api/v1`（本番兼用DB `Meelyze-plus` に接続）。`EXPO_PUBLIC_API_BASE_URL` を設定するとビルド時にその値へ置き換わる（ローカルのAPIで書き込みを試す場合など）。
 
-| キー | 接続時に設定するURL・状態 |
-|---|---|
-| `register` | `POST /api/v1/auth/register` の完全なURL |
-| `login` | `POST /api/v1/auth/login` の完全なURL |
-| `saveAllergens` | `PUT /api/v1/me/allergens` の完全なURL |
-| `analyzeMenu` | `POST /api/v1/menus/analyze` の完全なURL |
-| `getMenu` | `/api/v1/menus` までのURL。クライアントがメニューIDを追加 |
-| `createConfirmation` | `/api/v1/menus` までのURLを置く予約欄。店員回答をFastAPIへ送信する処理は未実装のため、URL設定だけでは接続されない |
-| `getDishDetails` | 将来用の予約欄。APIの契約・パスは未定義で、現状は解析結果から詳細を表示 |
+| キー | 呼び出すAPI | 認証 |
+|---|---|---|
+| `register` / `login` | `POST /auth/register`・`POST /auth/login` | なし |
+| `me` | `GET /me` | アカウント用 |
+| `myAllergens` / `saveAllergens` | `GET /me/allergens`・`PUT /me/allergens` | アカウント用 |
+| `analyzeMenu` | `POST /menus/analyze` | アカウント用（必須） |
+| `getMenu` | `GET /menus/{menu_id}` | 解析用 |
+| `createConfirmation` | `POST /menus/{menu_id}/confirmations` | 解析用 |
+| `getDishDetails` | 将来用の予約欄（APIの契約・パスは未定義） | — |
 
-`EXPO_PUBLIC_API_BASE_URL` は現在のコードでは使用していない。以前の実装方針のように、この環境変数だけ設定しても接続先は変わらない。結合時はFastAPI側の `ALLOWED_ORIGINS` にフロントのオリジンを設定する。
+ブラウザからFastAPIを直接呼ぶため、**FastAPI側の `ALLOWED_ORIGINS` にフロントのオリジンを追加する必要がある**（2026-10-18時点の本番は `http://localhost:8081` のみ許可）。APIのレート制限はIP単位のため、Expoサーバーを経由する中継にはしない。
+
+リクエストは `src/api/client.ts` の `requestJson` で送り、APIの共通エラー形式を `ApiError` に変換する。アカウント用トークンで401が返った場合は `clearAccountSession` でタブ内のトークン・本人情報を消し、ログインを案内する（アレルゲン選択は残す）。
 
 ### 環境変数
 
 | 名前 | 現在の扱い |
 |---|---|
+| `EXPO_PUBLIC_API_BASE_URL` | 任意。`/api/v1` を含むFastAPIのURL。未設定なら本番APIを使う |
 | `EXPO_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` | `.env.example` に予約。地図が未実装のため未使用。利用開始時はMaps JavaScript APIとHTTPリファラーを制限する |
 
 `EXPO_PUBLIC_` の値はブラウザへ公開される。Supabaseの秘密鍵・GeminiのAPIキー等はFastAPI側で管理し、ここには設定しない。
@@ -125,6 +130,7 @@ npm start
 - JPEG／PNGを受け付け、2000万画素を超える画像は拒否する。送信前に縮小・JPEG圧縮を行い、2 MiB以下にする。
 - 解析は `multipart/form-data` で `image`、繰り返しの `allergen_ids`、`locale=en`、店舗選択済みなら `google_place_id` を送る。アカウント用Bearerが必須で、401後にゲストへ切り替えて再送しない。
 - 解析の待機上限は45秒。二重送信を防ぎ、失敗した解析POSTを自動再送しない。成功後の解析用トークンはURLに載せず、結果とともに `sessionStorage` へ保存する。
+- 店員確認は `dietary_answers: []`（食事制限はモバイル画面から除外中）で送る。410（期限切れ）・`confirmation_limit_reached` は再撮影、409は新しい `request_id` で選び直し、通信失敗は同じ内容・IDでの再送を⑭で案内する。
 - AI候補の判定、過去回答の集計・時間による重み・スコア、注意フラグの計算はFastAPI側の担当。Expo側の `summary.ts` は返り値を表示用に整形し、AIと履歴を合成した予測値は計算しない。
 - 現在の一覧は `current_answer` の有無で区画を分け、AIまたは店員回答のバッジと `notices` による再確認案内を表示する。詳細はAIの説明・根拠と今回の店員回答を表示する。`store_history` の件数・日時・スコアを表示するUIは未実装。
 - 原材料候補は現行APIの返却欄がないため、詳細の `likelyIngredients` は空配列。未提供であることと店員への確認案内を表示する。
@@ -135,18 +141,19 @@ AIの推定と店員の回答は区別する。「安全」「食べられる」
 
 開発サーバー起動後、`/menu?demo=okinawa` を開くと、固定された沖縄メニュー14品を小麦（ID `3`）・豚肉（ID `23`）の対象で表示する。画像解析APIは呼ばない。
 
-料理を選択し、詳細 → `Ask staff` → 4択回答 → 同意 → 結果 → 一覧、の画面を確認できる構成。初期データには店員回答・過去回答はなく、操作で入力した回答だけをタブ内に仮保存する。実際の店舗確認や本番DBへの保存を示すものではない。
+料理を選択し、詳細 → `Ask staff` → 4択回答 → 同意 → 結果 → 一覧、の画面を確認できる構成。初期データには店員回答・過去回答はなく、操作で入力した回答だけをタブ内に仮保存する（プレビューだけはAPIを呼ばない）。実際の店舗確認や本番DBへの保存を示すものではない。
 
 | データ | 保存先 |
 |---|---|
 | 撮影・選択した画像 | `CaptureContext` のメモリ内 |
 | 選択アレルゲン、本人表示情報、アカウント用トークン・ID | `sessionStorage` |
-| 解析結果・解析用トークン | `sessionStorage`（メニューIDごと） |
-| 仮の店員回答・回答日時・同意 | `sessionStorage`（メニューIDごと） |
+| 解析結果・解析用トークン | `sessionStorage`（メニューIDごと。⑪の再取得で更新、ログイン・登録時に消去） |
+| 確認APIの応答（⑮・⑪′で共有） | `sessionStorage`（メニューID・料理IDごと。ログイン・登録時に消去） |
+| プレビューの仮の店員回答・回答日時・同意 | `sessionStorage`（メニューIDごと） |
 | 店員同意の記憶 | デモ／アカウントIDなしでは `sessionStorage`、アカウントIDありでは `localStorage` |
 | 初回ウォークスルーの表示済み状態 | 初回表示時に `localStorage` の `meelyze.walkthrough.seen` へ `1` を保存。保存不可時はページ内メモリのみ |
 
-実API結合時には、現在の仮保存を確認APIでの一括保存へ置き換え、保存成功後の回答・日時・公開可否をサーバー応答に基づいて表示する。仮保存は過去回答の集計や公開データへ反映されない。
+実メニューの店員回答は確認APIで保存し、⑮の回答・日時・公開可否はサーバー応答に基づいて表示する。プレビューの仮保存は過去回答の集計や公開データへ反映されない。
 
 ## Vercel設定
 
@@ -159,16 +166,23 @@ AIの推定と店員の回答は区別する。「安全」「食べられる」
 
 単に静的ファイルを置くSPA構成ではなく、入力検証・表示整形のAPI Routesも必要になる。デプロイ時は各画面の直接アクセスに加え、上記の補助APIが応答することを確認する。
 
+デプロイ手順：
+
+1. Vercelで新規プロジェクトを作り、Root Directoryを `apps/mobile` にする（Build・Output・Functionsは `vercel.json` の設定を使う。NodeはpackageのenginesでNode 24）。
+2. 環境変数は不要（本番APIが既定）。別のAPIを使う場合だけ `EXPO_PUBLIC_API_BASE_URL` を設定して再ビルドする。
+3. 発行されたオリジン（例 `https://<project>.vercel.app`、独自ドメインも）をAPIプロジェクトの `ALLOWED_ORIGINS`（カンマ区切り）に追加し、APIを再デプロイする。
+4. `curl -s -o /dev/null -w '%{http_code} %header{access-control-allow-origin}\n' -X OPTIONS https://meelyze-api.vercel.app/api/v1/menus/analyze -H "Origin: <フロントのオリジン>" -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: authorization'` が200とオリジンを返すことを確認する。
+
 ## 検証と残作業
 
-本書作成時はソースコード・設定・npm scriptsとの照合を行った。依存インストール、型チェック、Webビルド、ブラウザ実機・公開環境の動作確認はこの作業では実施していない。
+2026-10-18のAPI結合時に、`npm run typecheck`・`npm run build:web` の成功、`npx expo serve` での全画面・補助APIの応答、本番APIへの書き込みを伴わない確認（マスタ29件、アカウント用・解析用の各リクエストに対するCORSプリフライト、不正トークンへの401・404の形式）を行った。登録・ログイン・解析・店員確認の実送信、ブラウザ実機・Vercel上での動作は未検証。
 
 結合・公開前に次を確認する。
 
 - `npm ci`、`npm run typecheck`、`npm run build:web` の成功。
 - スマートフォンでの撮影、カメラ権限拒否時の画像選択、写真確認・再撮影。
-- 実APIによる登録・ログイン・本人設定保存・解析・結果再取得。タイムアウト・期限切れ・失敗時に自動再送しないこと。
-- 店員回答のFastAPIへの一括保存、同意・公開条件、未回答の拒否、明示的な「分からない」、二重送信、保存後の一覧への反映。
+- 実APIによる登録・ログイン・本人設定保存・解析・結果再取得（本番兼用DBに書き込むため、試験はローカルのAPI・Supabaseを `EXPO_PUBLIC_API_BASE_URL` で指定して行う）。タイムアウト・期限切れ・失敗時に自動再送しないこと。
+- 店員回答の一括保存、同意・公開条件、明示的な「わからない」、再送（同じ `request_id` で200・`replayed=true`）、保存後の⑪′・⑮への反映。
 - 店舗検索・位置情報・地図、過去回答の件数／日時表示、本人履歴などの未実装範囲。
 
 食事制限・ゲスト利用・複数人プロファイルを含む全体要件の達成状況は、現行モバイル方針との差分を整理したうえで判断する。

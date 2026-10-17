@@ -1,6 +1,7 @@
 import { Stack, useGlobalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { BrandLogo } from "../src/components/BrandLogo";
+import { BottomNavigation, bottomNavigationHeight, getNavigationTab } from "../src/components/BottomNavigation";
 import { CaptureProvider } from "../src/features/capture/CaptureContext";
 import { claimFirstVisit } from "../src/features/onboarding/firstVisit";
 import { Walkthrough } from "../src/features/onboarding/Walkthrough";
@@ -15,6 +16,7 @@ export default function RootLayout() {
   const { lang } = useGlobalSearchParams<{ lang?: string | string[] }>();
   const tourLanguage = lang === "ja" ? "ja" : "en";
   const showHeader = showTour === false && pathname !== "/";
+  const activeTab = showTour === false ? getNavigationTab(pathname) : null;
 
   useEffect(() => {
     // Avoid claiming a second visit when development Strict Mode replays effects.
@@ -32,12 +34,12 @@ export default function RootLayout() {
         display: "flex", alignItems: "center", justifyContent: "center",
         backgroundColor: colors.white,
       }}>
-        <BrandLogo width={140} variant="header" />
+        <BrandLogo width={210} variant="header" />
       </header> : null}
       <main lang={showTour ? tourLanguage : undefined} style={{
         height: "100dvh", boxSizing: "border-box", overflow: "hidden",
         paddingTop: `calc(${showHeader ? headerHeight : 0}px + env(safe-area-inset-top, 0px))`,
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        paddingBottom: `calc(${activeTab ? bottomNavigationHeight : 0}px + env(safe-area-inset-bottom, 0px))`,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
         display: "flex", flexDirection: "column", width: "100%",
@@ -53,6 +55,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.white } }} />
         )}
       </main>
+      {activeTab ? <BottomNavigation activeTab={activeTab} /> : null}
     </CaptureProvider>
   );
 }

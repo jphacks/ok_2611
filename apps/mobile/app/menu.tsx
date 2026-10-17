@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { getMenuResult, isMenuResultConfigured } from "../src/api/menus";
-import { getMenuAnalysis } from "../src/features/capture/analysis";
+import { ApiError } from "../src/api/auth";
+import { getMenuResult, isMenuResultConfigured, type MenuResult } from "../src/api/menus";
+import { getMenuAnalysis, saveMenuAnalysis } from "../src/features/capture/analysis";
 import { okinawaMenuDemo } from "../src/features/menu-results/demo";
 import { applyLocalConfirmations } from "../src/features/menu-results/localConfirmations";
 import { getSelectedAllergenIds } from "../src/features/profile/selection";
@@ -16,6 +17,14 @@ const tones: Record<BadgeTone, { backgroundColor: string; color: string; borderC
   unknown: { backgroundColor: "#FFFFFF", color: colors.ink, borderColor: "#B8C8BF" },
   reportedAbsent: { backgroundColor: "#E4F3EC", color: "#075E49", borderColor: "#E4F3EC" },
 };
+
+function menuErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return "Could not refresh the menu result.";
+  if (error.status === 410) return "This analysis has expired. Please take a new photo.";
+  if (error.status === 401 || error.status === 404) return "This menu result is not available in this tab. Scan the menu again.";
+  if (error.status === 0) return "Could not connect. Please try again.";
+  return "Could not refresh the menu result. Please try again.";
+}
 
 function DishCard({ dish, confirmed, disabled, onPress }: { dish: SummaryDish; confirmed: boolean; disabled: boolean; onPress: () => void }) {
   const price = dish.price == null ? "" : `${dish.currency === "JPY" ? "¥" : `${dish.currency} `}${dish.price}`;
@@ -67,17 +76,27 @@ export default function MenuScreen() {
           });
         } else {
           const analysis = getMenuAnalysis(id!);
-          if (!analysis) throw new Error("This menu result is not available in this tab.");
+          if (!analysis) throw new Error("This menu result is not available in this tab. Scan the menu again.");
           const selectedAllergenIds = getSelectedAllergenIds();
           if (selectedAllergenIds.length === 0) throw new Error("Choose your allergens before viewing a menu.");
-          const menu = isMenuResultConfigured
-            ? await getMenuResult(analysis.menu_id, analysis.analysis_token, selectedAllergenIds)
-            : analysis;
-          const { analysis_token: _token, ...cachedMenu } = analysis;
+          let menu: MenuResult;
+          if (isMenuResultConfigured) {
+            try {
+              // Staff answers saved for this menu come back as current_answer; nothing is merged locally.
+              menu = await getMenuResult(analysis.menu_id, analysis.analysis_token, selectedAllergenIds);
+            } catch (cause) {
+              throw new Error(menuErrorMessage(cause));
+            }
+            // Keep the cached dishes in step with the current allergen selection for ⑬.
+            saveMenuAnalysis({ ...menu, analysis_token: analysis.analysis_token });
+          } else {
+            const { analysis_token: _token, ...cachedMenu } = analysis;
+            menu = applyLocalConfirmations(cachedMenu);
+          }
           response = await fetch("/menu-summary", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ menu: applyLocalConfirmations(isMenuResultConfigured ? menu : cachedMenu), selectedAllergenIds }),
+            body: JSON.stringify({ menu, selectedAllergenIds }),
           });
         }
         if (!response.ok) throw new Error("Could not prepare the menu list.");
@@ -164,11 +183,6 @@ export default function MenuScreen() {
       ) : null}
 
       <View style={styles.spacer} />
-      <View style={styles.tabBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.push("/map")}><Text style={styles.tab}>⌖{"\n"}Map</Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.push("/capture")}><Text style={[styles.tab, styles.activeTab]}>▣{"\n"}Scan</Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.push("/profiles")}><Text style={styles.tab}>●{"\n"}Profile</Text></Pressable>
-      </View>
     </ScrollView>
     <DishDetailSheet detail={selectedDetail} onClose={closeSheet} onAskStaff={askStaff} />
     </>
@@ -204,7 +218,4 @@ const styles = StyleSheet.create({
   error: { color: colors.error, marginTop: 22 },
   empty: { alignItems: "flex-start" },
   spacer: { flexGrow: 1, minHeight: 28 },
-  tabBar: { flexDirection: "row", justifyContent: "space-around", borderTopWidth: 1, borderColor: colors.line, paddingTop: 16, paddingBottom: 25, marginHorizontal: -20 },
-  tab: { color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 20 },
-  activeTab: { color: colors.green, fontWeight: "700" },
 });

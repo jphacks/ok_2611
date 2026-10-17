@@ -1,14 +1,18 @@
-// External API URLs stay empty until the full user flow is ready to connect.
-// Fill each complete URL (including /api/v1) here at the final integration step.
-// An empty value must never trigger a network request.
-export const apiEndpoints: Record<"register" | "login" | "saveAllergens" | "analyzeMenu" | "getMenu" | "getDishDetails" | "createConfirmation", string> = {
-  register: "", // POST /api/v1/auth/register
-  login: "", // POST /api/v1/auth/login
-  saveAllergens: "", // PUT /api/v1/me/allergens
-  analyzeMenu: "", // POST /api/v1/menus/analyze
-  getMenu: "", // GET /api/v1/menus/{menu_id}; put the URL through /menus here
+// FastAPI base URL including /api/v1. EXPO_PUBLIC_API_BASE_URL can point a local build at another API;
+// it is inlined at build time, so it must never hold a secret.
+const defaultApiBaseUrl = "https://meelyze-api.vercel.app/api/v1";
+export const apiBaseUrl = (process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || defaultApiBaseUrl).replace(/\/+$/, "");
+
+export const apiEndpoints: Record<"register" | "login" | "me" | "myAllergens" | "saveAllergens" | "analyzeMenu" | "getMenu" | "getDishDetails" | "createConfirmation", string> = {
+  register: `${apiBaseUrl}/auth/register`, // POST
+  login: `${apiBaseUrl}/auth/login`, // POST
+  me: `${apiBaseUrl}/me`, // GET
+  myAllergens: `${apiBaseUrl}/me/allergens`, // GET
+  saveAllergens: `${apiBaseUrl}/me/allergens`, // PUT
+  analyzeMenu: `${apiBaseUrl}/menus/analyze`, // POST
+  getMenu: `${apiBaseUrl}/menus`, // GET /menus/{menu_id}; the client appends the menu ID
   getDishDetails: "", // Reserved for a future dish detail API. Contract and path are not defined yet.
-  createConfirmation: "", // POST /api/v1/menus/{menu_id}/confirmations; put the URL through /menus here.
+  createConfirmation: `${apiBaseUrl}/menus`, // POST /menus/{menu_id}/confirmations; the client appends the rest
 };
 
 export function isEndpointConfigured(endpoint: keyof typeof apiEndpoints): boolean {

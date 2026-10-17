@@ -1,5 +1,9 @@
-import { ApiError, getAccountToken } from "./auth";
+import { ApiError, requestJson } from "./client";
+import { getAccountToken } from "./auth";
 import { apiEndpoints, isEndpointConfigured } from "./endpoints";
+
+export type StaffAnswer = "contains" | "shared_utensils" | "does_not_contain" | "unknown";
+type AnswerCounts = Record<StaffAnswer, number>;
 
 export type MenuAllergen = {
   allergen_id: number;
@@ -11,13 +15,17 @@ export type MenuAllergen = {
     weight: number | null;
   };
   current_answer: {
-    answer: "contains" | "shared_utensils" | "does_not_contain" | "unknown";
+    answer: StaffAnswer;
     confirmed_at: string;
   } | null;
   store_history: {
     match_basis: "name_key";
+    answer_counts: AnswerCounts;
+    last_answered_at: Record<StaffAnswer, string | null>;
     last_confirmed_at: string;
-    answer_counts: { contains: number; shared_utensils: number; does_not_contain: number; unknown: number };
+    alpha: number;
+    beta: number;
+    score: number | null;
     has_conflict: boolean;
   } | null;
   notices: {
@@ -50,28 +58,50 @@ export type MenuResult = {
 };
 export type MenuAnalysis = MenuResult & { analysis_token: string };
 
+export type ConfirmationAnswer = { dish_id: string; allergen_id: number; answer: StaffAnswer };
+export type ConfirmationRequest = {
+  request_id: string;
+  answers: ConfirmationAnswer[];
+  dietary_answers: [];
+  publish_consent: boolean;
+  locale: "en";
+};
+export type ConfirmedAllergen = Omit<MenuAllergen, "current_answer"> & { answer: StaffAnswer; answer_label: string };
+export type ConfirmedDish = {
+  dish_id: string;
+  display_name: string;
+  allergens: ConfirmedAllergen[];
+  dietary_restrictions: unknown[];
+};
+export type ConfirmationResult = {
+  session_id: string;
+  confirmed_at: string;
+  publish_consent: boolean;
+  user_publish_consent: boolean;
+  is_public: boolean;
+  replayed: boolean;
+  results: ConfirmedDish[];
+};
+
 export const isMenuAnalysisConfigured = isEndpointConfigured("analyzeMenu");
 
 export const isMenuResultConfigured = isEndpointConfigured("getMenu");
 
+function menuUrl(base: string, menuId: string, suffix = ""): URL {
+  return new URL(`${base.replace(/\/$/, "")}/${encodeURIComponent(menuId)}${suffix}`);
+}
+
 export async function getMenuResult(menuId: string, analysisToken: string, allergenIds: number[]): Promise<MenuResult> {
   const base = apiEndpoints.getMenu.trim();
   if (!base) throw new ApiError(0, "api_not_configured", "The result API is not connected yet.");
-  const url = new URL(`${base.replace(/\/$/, "")}/${encodeURIComponent(menuId)}`);
+  const url = menuUrl(base, menuId);
   url.searchParams.set("allergen_ids", allergenIds.join(","));
   url.searchParams.set("locale", "en");
-  let response: Response;
-  try {
-    response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${analysisToken}` }, cache: "no-store" });
-  } catch {
-    throw new ApiError(0, "network_error", "Could not refresh the menu result.");
-  }
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const apiError = payload && typeof payload === "object" && "error" in payload
-      ? (payload as { error?: { code?: string; message?: string } }).error : undefined;
-    throw new ApiError(response.status, apiError?.code ?? "request_failed", apiError?.message ?? "Could not refresh the menu result.");
-  }
+  const { payload } = await requestJson(url.toString(), {
+    headers: { Authorization: `Bearer ${analysisToken}` },
+    networkMessage: "Could not refresh the menu result.",
+    failureMessage: "Could not refresh the menu result.",
+  });
   const result = payload as MenuResult | null;
   if (!result || result.menu_id !== menuId || !Array.isArray(result.dishes)) {
     throw new ApiError(0, "invalid_response", "The refreshed menu result was incomplete.");
@@ -93,30 +123,41 @@ export async function analyzeMenu(image: File, allergenIds: number[], placeId?: 
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
-  let response: Response;
+  let payload: unknown;
   try {
-    response = await fetch(url, {
+    ({ payload } = await requestJson(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body,
       signal: controller.signal,
-    });
-  } catch (error) {
-    if (controller.signal.aborted) throw new ApiError(504, "timeout", "Analysis took too long. Try again.");
-    throw new ApiError(0, "network_error", "Could not connect. Try again.");
+      networkMessage: "Could not connect. Try again.",
+      failureMessage: "Analysis failed. Try again.",
+    }));
   } finally {
     clearTimeout(timeout);
-  }
-
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = payload && typeof payload === "object" && "error" in payload
-      ? (payload as { error?: { code?: string; message?: string } }).error : undefined;
-    throw new ApiError(response.status, error?.code ?? "request_failed", error?.message ?? "Analysis failed. Try again.");
   }
   const result = payload as MenuAnalysis | null;
   if (!result?.menu_id || !result.analysis_token || !Array.isArray(result.dishes)) {
     throw new ApiError(0, "invalid_response", "The analysis response was incomplete.");
+  }
+  return result;
+}
+
+// Saves the staff answers and the staff's publish choice in one request (API 6).
+// A resend with the same request_id and body is answered with replayed=true instead of a second record.
+export async function createConfirmation(menuId: string, analysisToken: string, body: ConfirmationRequest): Promise<ConfirmationResult> {
+  const base = apiEndpoints.createConfirmation.trim();
+  if (!base) throw new ApiError(0, "api_not_configured", "The confirmation API is not connected yet.");
+  const { payload } = await requestJson(menuUrl(base, menuId, "/confirmations").toString(), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${analysisToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    networkMessage: "Could not connect. Please try again.",
+    failureMessage: "Could not save the staff answers.",
+  });
+  const result = payload as ConfirmationResult | null;
+  if (!result?.session_id || typeof result.is_public !== "boolean" || !Array.isArray(result.results)) {
+    throw new ApiError(0, "invalid_response", "The confirmation response was incomplete.");
   }
   return result;
 }

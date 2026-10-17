@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { analyzeMenu } from "../../src/api/menus";
-import { ApiError } from "../../src/api/auth";
+import { ApiError, clearAccountSession } from "../../src/api/auth";
 import { Page } from "../../src/components/Page";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { useCapture } from "../../src/features/capture/CaptureContext";
@@ -15,6 +15,7 @@ function messageFor(error: unknown): string {
   if (error.code === "api_not_configured") return "The analysis API is not connected yet. No photo was uploaded.";
   if (error.code === "login_required") return "Log in before analyzing a menu.";
   if (error.status === 401) return "Your login expired. Log in again before analyzing.";
+  if (error.code === "timeout") return "Analysis took too long. Please try again.";
   if (error.status === 404) return "The selected restaurant could not be found. Retake without a restaurant.";
   if (error.status === 413 || error.status === 415) return "This image cannot be uploaded. Choose a smaller JPEG or PNG photo.";
   if (error.status === 422) return "The menu could not be read. Retake a clearer photo.";
@@ -30,6 +31,7 @@ export default function CapturePreviewScreen() {
   const { image, clearImage } = useCapture();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [needsLogin, setNeedsLogin] = useState(false);
   const captureRoute = { pathname: "/capture" as const, params: placeId ? { google_place_id: placeId, restaurant_name: restaurantName } : {} };
 
   useFocusEffect(useCallback(() => () => clearImage(), []));
@@ -43,12 +45,18 @@ export default function CapturePreviewScreen() {
     }
     setBusy(true);
     setError("");
+    setNeedsLogin(false);
     try {
       const result = await analyzeMenu(image.file, ids, placeId);
       saveMenuAnalysis(result);
       clearImage();
       router.replace({ pathname: "/menu", params: { id: result.menu_id } });
     } catch (cause) {
+      // An invalid account token is never retried as a guest; the user logs in again instead.
+      if (cause instanceof ApiError && cause.status === 401) {
+        if (cause.code !== "login_required") clearAccountSession();
+        setNeedsLogin(true);
+      }
       setError(messageFor(cause));
     } finally {
       setBusy(false);
@@ -73,6 +81,9 @@ export default function CapturePreviewScreen() {
       {!placeId ? <Text style={styles.note}>Previous staff answers are not used without a restaurant.</Text> : null}
       {busy ? <Text accessibilityRole="alert" style={styles.progress}>Analyzing menu… This may take up to 45 seconds.</Text> : null}
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      {needsLogin ? (
+        <Pressable accessibilityRole="button" onPress={() => router.push("/login")}><Text style={styles.login}>Log in</Text></Pressable>
+      ) : null}
       <View style={styles.actions}>
         <Pressable
           accessibilityRole="button"
@@ -110,4 +121,5 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   progress: { color: colors.greenDark, marginTop: 15 },
   error: { color: "#B42318", marginTop: 15, lineHeight: 20 },
+  login: { color: colors.green, fontWeight: "700", marginTop: 8, paddingVertical: 4 },
 });
