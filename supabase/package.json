@@ -1,0 +1,11 @@
+{
+  "name": "meelyze-supabase",
+  "private": true,
+  "description": "Supabase CLI for local development and migrations. Run commands from the repository root via npm --prefix supabase.",
+  "scripts": {
+    "supabase": "supabase"
+  },
+  "devDependencies": {
+    "supabase": "2.121.0"
+  }
+}

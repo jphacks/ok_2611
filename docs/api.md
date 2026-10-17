@@ -2,9 +2,9 @@
 
 `apps/api`（FastAPI）が提供するAPIの一覧、各APIの内容と使い方、処理ルールを記す。
 
-- 本書を基に `contracts/openapi.yaml`（未作成）を作成し、実装の `/openapi.json` と一致させる。
+- 本書を基に作成した `contracts/openapi.yaml` を、実装の `/openapi.json` と一致させる。2026-10-17に全17操作を照合した（`apps/api/scripts/compare_openapi.py`、実際の応答と契約の例を契約のスキーマで検証する `apps/api/tests/test_openapi_contract.py`）。
 - 技術スタック・環境設定は [apps/api/README.md](../apps/api/README.md) を参照する。
-- アプリと `prompts/menu_analysis.md` は未作成。本書のURL・例・プロンプトv4は設計であり、動作確認済みではない。VLMの実装前にプロンプトとJSON Schemaを作成する。
+- VLMのプロンプトv5と出力のJSON Schemaは `apps/api/prompts/menu_analysis.md`・`apps/api/contracts/menu_analysis.schema.json`（VercelのRoot Directory `apps/api` に含めるため、この配下に置く）。既存v4の読み取りも維持する。APIの実装・検証の結果は [API README](../apps/api/README.md) に記録する。
 
 ## 共通
 
@@ -17,7 +17,7 @@
 | 言語 | `locale` で指定する。`en` のみ（既定値）。料理名の英訳・英語の説明・対象項目名・回答ラベルを返す。MVPで `ja` などを指定した場合は422。⑬・⑭の日本語はフロントの固定辞書を使う |
 | 入力 | 未定義のフィールドは422で拒否する |
 | 認証 | `Authorization: Bearer <token>`。トークンをURLクエリ・本文に入れない |
-| キャッシュ | 解析結果・確認結果・アカウントのレスポンスは `Cache-Control: no-store`。公開メニューもMVPではキャッシュしない |
+| キャッシュ | 解析結果・確認結果・アカウント・周辺検索のレスポンスは `Cache-Control: no-store`。公開メニューもMVPではキャッシュしない |
 
 ### トークン
 
@@ -63,7 +63,7 @@
 | 429 | レート制限（解析、周辺検索、登録、ログイン失敗） | `rate_limited` |
 | 502 / 503 / 504 | AI出力の不正／外部サービス利用不能／時間超過 | `invalid_ai_output`、`service_unavailable`、`timeout` |
 
-DB関数のSQLSTATEは次のように変換する：`28000`→401、`P0002`→404、`P0003`→410、`40001`→409、`22023`→422。`accounts.email` の一意制約違反（`23505`）は409 `email_already_registered`。その他の制約違反は、内容に応じて422か409にする。
+DB関数のSQLSTATEは次のように変換する：`28000`→401、`P0002`→404、`P0003`→410、`40001`→409、`22023`→422。ただし `P0002` の `account_not_found` は、アカウント用トークンの `sub` に当たるアカウントがないことを示すため、トークン検証の失敗と同じ401 `unauthorized` にする。`accounts.email` の一意制約違反（`23505`）は409 `email_already_registered`。その他の制約違反は、内容に応じて422か409にする。PostgRESTが付けるHTTPステータスはこの対応と一致しないため使わない（[API README](../apps/api/README.md#dbエラーの変換)）。
 
 ## API一覧
 
@@ -72,10 +72,10 @@ DB関数のSQLSTATEは次のように変換する：`28000`→401、`P0002`→40
 | 1 | `GET /health` | なし | P0 | 稼働確認 | 監視、デプロイ確認 |
 | 2 | `GET /allergens` | なし | P0 | アレルゲンのマスタ | ⑤、⑰ |
 | 3 | `GET /places/nearby` | なし | P0（地図表示はP1） | 現在地周辺の飲食店（Google） | ⑥マップ／周辺一覧、⑧店舗確認 |
-| 4 | `POST /menus/analyze` | 任意のアカウント用 | P0 | メニュー画像の解析・予測 | ⑩撮影確認の Analyze |
-| 5 | `GET /menus/{menu_id}` | 解析用 | P0 | 解析・予測結果の再取得 | 予測一覧 |
+| 4 | `POST /menus/analyze` | 任意のアカウント用 | P0 | メニュー画像の解析・判定 | ⑩撮影確認の Analyze |
+| 5 | `GET /menus/{menu_id}` | 解析用 | P0 | 解析・判定結果の再取得 | ⑪／⑪′の一覧 |
 | 6 | `POST /menus/{menu_id}/confirmations` | 解析用 | P0 | 店員回答と公開可否の一括保存 | ⑭の同意する／同意しない |
-| 7 | `GET /places/{google_place_id}/public-menus` | なし | P1 | 店舗・料理ごとの公開回答の集計と予測 | ⑦ |
+| 7 | `GET /places/{google_place_id}/public-menus` | なし | P1 | 店舗・料理ごとの公開回答の集計 | ⑦ |
 | 8 | `POST /auth/register` | なし | P1 | アカウント登録 | ③ |
 | 9 | `POST /auth/login` | なし | P1 | ログイン | ④ |
 | 10 | `GET /me` | アカウント用 | P1 | 自分のアカウント情報 | ⑯ |
@@ -149,7 +149,10 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 ```
 
 - APIがサーバー用キーでGoogleを呼ぶ。飲食店の種別に絞り、最大20件を距離順に返す。
+- `distance_m` は、現在地（`lat`・`lng`）から店舗の座標までの大圏距離をAPIが計算し、整数のmに四捨五入したもの。`distance_m` の昇順、同じ距離は `google_place_id` の昇順で並べ、同じPlace IDは1件だけ返す。
+- レスポンスは `Cache-Control: no-store`。現在地から導いた結果を中間のキャッシュに残さないため。
 - `has_public_menus`・`public_menu_count` は、Place IDでMeelyze+の公開メニューと照合して付ける。非公開の確認の有無は返さない。
+- `public_menu_count` は、その店舗で ⑦（API 7）に表示される料理の数。`published_menus` に含まれる、店舗ごとの異なる `name_key` の数で、メニュー（撮影した画像）の数ではない。同じ料理が複数のメニュー・利用者で公開されても1件と数え、表記ゆれのある同じ料理は別に数える。`has_public_menus` は `public_menu_count` が1以上のとき `true`。
 - 店名・座標・住所はGoogleからそのつど取得し、DBに保存しない。
 - 利用者の座標はログに記録しない。
 - 位置情報が拒否された場合、画面はこのAPIを呼ばずにスキップを案内する。
@@ -158,7 +161,7 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 
 ### 4. `POST /menus/analyze`
 
-⑩の Analyze から呼び、画像を解析して料理ごとに利用者のアレルゲン・食事制限の予測を返す。同じ店舗で過去の店員確認があれば、判定に使う。
+⑩の Analyze から呼び、画像を解析して料理ごとに利用者のアレルゲン・食事制限の判定（AIの候補・店舗の履歴）を返す。同じ店舗で過去の店員確認があれば、履歴として集計する。
 
 認証は任意のアカウント用Bearer。ヘッダーなしならゲストとして `account_id=NULL`・利用者同意falseで保存する。ヘッダーがあれば署名・期限・typ・アカウントの存在を検証し、無効なら401にする。無効な認証を黙ってゲスト扱いしない。検証した `sub` を保存RPCへ渡す。リクエスト本文の `account_id`・`user_publish_consent` は拒否する。
 
@@ -168,8 +171,8 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 |---|---|---|
 | `image` | 必須 | JPEG／PNG、2 MiB以下、2000万画素以下 |
 | `google_place_id` | 任意 | `GET /places/nearby` で選んだ店舗。省略すると店舗未選択 |
-| `allergen_ids` | 任意 | 利用者のアレルゲンID（選んだプロファイルの和集合）。複数指定。省略するとAIが候補に挙げたアレルゲンを予測する |
-| `dietary_restriction_ids` | 任意 | 利用者の食事制限IDの和集合。複数指定。省略時は食事制限の予測を返さない。DBに保存しない |
+| `allergen_ids` | 任意 | 利用者のアレルゲンID（選んだプロファイルの和集合）。複数指定。省略するとAIが候補に挙げたアレルゲンを判定の対象にする |
+| `dietary_restriction_ids` | 任意 | 利用者の食事制限IDの和集合。複数指定。省略時は食事制限の判定を返さない。DBに保存しない |
 | `locale` | 任意 | `en` のみ（MVP） |
 
 レスポンス（201、アレルゲン・食事制限を指定した例）：
@@ -181,41 +184,97 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
   "analysis_token": "<解析用トークン（この応答でだけ返す）>",
   "analysis_expires_at": "2026-10-18T03:00:00Z",
   "ai_model": "gemini-3.8-flash",
-  "prompt_version": "v4",
+  "prompt_version": "v5",
   "analyzed_at": "2026-10-17T03:00:00Z",
   "locale": "en",
-  "dishes": [{
-    "dish_id": "33333333-3333-4333-8333-333333333331",
-    "dish_version": 1,
-    "name": "海老天そば",
-    "display_name": "Shrimp tempura soba",
-    "description": "Buckwheat noodles in hot broth topped with shrimp tempura.",
-    "price": 1200,
-    "currency": "JPY",
-    "allergens": [
-      {
-        "allergen_id": 4,
-        "display_name": "Shrimp",
-        "prediction": {"status": "contains", "basis": "ai_and_store_answers", "vote_shares": {"contains": 1.0, "cross_contact": 0.0, "not_contains": 0.0}},
-        "ai": {"status": "explicit_present", "source": "menu_text", "evidence": "海老天"},
-        "store_history": {"answer_counts": {"contains": 2, "cross_contact": 0, "not_contains": 0, "unknown": 0}, "last_confirmed_at": "2026-10-10T05:00:00Z", "has_conflict": false}
-      },
-      {
-        "allergen_id": 6,
-        "display_name": "Buckwheat",
-        "prediction": {"status": "possible", "basis": "ai_only", "vote_shares": null},
-        "ai": {"status": "possible", "source": "dish_name_inference", "evidence": "Soba noodles are usually made with buckwheat."},
-        "store_history": null
-      }
-    ],
-    "dietary_restrictions": [{
-      "dietary_restriction_id": 4,
-      "display_name": "No alcohol",
-      "prediction": {"status": "possible", "basis": "ai_only", "vote_shares": null},
-      "ai": {"status": "possible_conflict", "source": "recipe_inference", "evidence": "The broth seasoning may use cooking sake."},
-      "store_history": null
-    }]
-  }]
+  "dishes": [
+    {
+      "dish_id": "33333333-3333-4333-8333-333333333331",
+      "dish_version": 1,
+      "name": "海老天そば",
+      "display_name": "Shrimp tempura soba",
+      "description": "Buckwheat noodles in hot broth topped with shrimp tempura.",
+      "price": 1200,
+      "currency": "JPY",
+      "allergens": [
+        {
+          "allergen_id": 6,
+          "display_name": "Buckwheat",
+          "ai": {
+            "status": "possible",
+            "source": "dish_name_inference",
+            "evidence": "Soba noodles are usually made with buckwheat.",
+            "weight": null
+          },
+          "current_answer": null,
+          "store_history": null,
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": false,
+            "history_conflict": false,
+            "history_shared_utensils": false
+          }
+        },
+        {
+          "allergen_id": 4,
+          "display_name": "Shrimp",
+          "ai": {
+            "status": "explicit_present",
+            "source": "menu_text",
+            "evidence": "海老天",
+            "weight": null
+          },
+          "current_answer": null,
+          "store_history": {
+            "match_basis": "name_key",
+            "answer_counts": {
+              "contains": 1,
+              "shared_utensils": 2,
+              "does_not_contain": 3,
+              "unknown": 1
+            },
+            "last_answered_at": {
+              "contains": "2026-10-10T05:00:00Z",
+              "shared_utensils": "2026-10-12T05:00:00Z",
+              "does_not_contain": "2026-10-15T05:00:00Z",
+              "unknown": "2026-10-16T05:00:00Z"
+            },
+            "last_confirmed_at": "2026-10-16T05:00:00Z",
+            "alpha": 1.79,
+            "beta": 3.512,
+            "score": 0.338,
+            "has_conflict": true
+          },
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": false,
+            "history_conflict": true,
+            "history_shared_utensils": true
+          }
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 4,
+          "display_name": "No alcohol",
+          "ai": {
+            "status": "possible_conflict",
+            "source": "recipe_inference",
+            "evidence": "The broth seasoning may use cooking sake.",
+            "weight": null
+          },
+          "current_answer": null,
+          "store_history": null,
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": false,
+            "history_conflict": false,
+            "history_cross_contact": false
+          }
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -224,14 +283,14 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 1. 容量、MIME、実際の画像形式、画素数を検証する。EXIFの向きを反映し、不要なメタデータを取り除く。
 2. `google_place_id` があれば、Place Details（`id` のみ）で存在を確認する。存在しなければ404 `place_not_found`。
 3. Geminiへ、画像とアレルゲン・食事制限のマスタを送る。利用者が選択した設定は送らない。出力を `contracts/menu_analysis.schema.json` で検証する。画像内の文章は入力データとして扱い、そこに書かれた指示には従わない。
-4. 未知・重複したアレルゲンID・食事制限ID、無効な価格、20料理超過を拒否する。読めない料理は返さず、0料理なら422 `unreadable_menu`。
-5. アレルゲン候補の根拠を、後述の「AIの候補」の規則で正規化する。料理名から照合用のキー（`name_key`）を作る。
+4. 未知のアレルゲンID・食事制限ID、無効な価格、20料理超過、フィールド・型・列挙値などの構造不正を502で拒否する。読めない料理は返さず、0料理なら422 `unreadable_menu`。
+5. アレルゲン・食事制限候補を、後述の「AIの候補」の規則で項目単位で正規化する。正規化後の組み合わせと根拠を検証し、同じ項目の重複を優先順で1件にする。料理名から照合用のキー（`name_key`）を作る。
 6. 店舗があれば、`restaurants` に Place ID を登録する（既にあれば再利用）。
 7. 非公開Storageへランダムなパスで画像を保存する。`save_menu_analysis` の1回のRPCで、メニューと全料理を登録する。ログイン中は検証済み所有者IDを渡し、DBから登録時同意を読み取って保存する。DB登録に失敗したら、画像をStorage APIで削除する。
-8. 店舗があれば、同じ店舗・同じ `name_key` の過去の店員確認を集め、「判定アルゴリズム」で予測を計算する。
+8. 店舗があれば、同じ店舗・同じ `name_key` の過去の店員確認を集め、「判定アルゴリズム」で判定を計算する（保存しない）。
 9. 解析用トークンと、`locale` の言語での結果を返す。
 
-- `allergen_ids`・`dietary_restriction_ids` は予測対象の選択にだけ使い、DBに保存しない。未知・重複のIDはそれぞれ422 `invalid_allergen_ids`／`invalid_dietary_restriction_ids`。保存する `ai_result` は利用者に依存しない。
+- `allergen_ids`・`dietary_restriction_ids` は判定の対象選択にだけ使い、DBに保存しない。未知・重複のIDはそれぞれ422 `invalid_allergen_ids`／`invalid_dietary_restriction_ids`。保存する `ai_result` は利用者に依存しない。
 - 料理名の英訳と英語の説明（`translations.en`）を解析時に生成して保存する。説明はAIによる推定であり、画面で「AIによる説明」と明示する。
 - 画像のパスやURLは返さない。
 - 自動では再送しない。通信が失敗した場合は、利用者の操作でやり直す。
@@ -240,18 +299,122 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 
 ### 5. `GET /menus/{menu_id}`
 
-解析・予測結果を再取得する。⑪／⑪′の再読み込みやプロファイル切替で使う。VLMは再実行しない。
+解析・判定結果を再取得する。⑪／⑪′の再読み込みやプロファイル切替で使う。VLMは再実行しない。
 
 - 認証：解析用トークン。トークンがこの `menu_id` のものでなければ401、期限切れなら410。
 
 | クエリ | 必須 | 内容 |
 |---|---|---|
-| `allergen_ids` | 任意 | アレルゲンの予測対象（カンマ区切り） |
-| `dietary_restriction_ids` | 任意 | 食事制限の予測対象（カンマ区切り）。省略時は食事制限の予測なし |
+| `allergen_ids` | 任意 | アレルゲンの判定の対象（カンマ区切り）。省略時はAIが明示した候補（不明を含む） |
+| `dietary_restriction_ids` | 任意 | 食事制限の判定の対象（カンマ区切り）。省略時は食事制限の判定なし |
 | `locale` | 任意 | `en` のみ（MVP） |
 
 - レスポンス：`POST /menus/analyze` と同じ形式。ただし `analysis_token` は含めない。料理は保存された `position` 順に返す。
-- 予測は呼び出すたびに計算し直す。解析後に同じ店舗で新しい店員確認があれば反映される。
+- 判定は呼び出すたびに計算し直す。このメニューの店員確認は `current_answer`（料理・項目ごとの最新の回答）に、同じ店舗の新しい確認は `store_history` に反映される。
+- 例（`current_answer` あり）：
+
+```json
+{
+  "menu_id": "22222222-2222-4222-8222-222222222222",
+  "google_place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+  "analysis_expires_at": "2026-10-18T03:00:00Z",
+  "ai_model": "gemini-3.8-flash",
+  "prompt_version": "v4",
+  "analyzed_at": "2026-10-17T03:00:00Z",
+  "locale": "en",
+  "dishes": [
+    {
+      "dish_id": "33333333-3333-4333-8333-333333333331",
+      "dish_version": 1,
+      "name": "海老天そば",
+      "display_name": "Shrimp tempura soba",
+      "description": "Buckwheat noodles in hot broth topped with shrimp tempura.",
+      "price": 1200,
+      "currency": "JPY",
+      "allergens": [
+        {
+          "allergen_id": 6,
+          "display_name": "Buckwheat",
+          "ai": {
+            "status": "possible",
+            "source": "dish_name_inference",
+            "evidence": "Soba noodles are usually made with buckwheat.",
+            "weight": null
+          },
+          "current_answer": null,
+          "store_history": null,
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": false,
+            "history_conflict": false,
+            "history_shared_utensils": false
+          }
+        },
+        {
+          "allergen_id": 4,
+          "display_name": "Shrimp",
+          "ai": {
+            "status": "explicit_present",
+            "source": "menu_text",
+            "evidence": "海老天",
+            "weight": null
+          },
+          "current_answer": {
+            "answer": "contains",
+            "confirmed_at": "2026-10-17T03:10:00Z"
+          },
+          "store_history": {
+            "match_basis": "name_key",
+            "answer_counts": {
+              "contains": 1,
+              "shared_utensils": 2,
+              "does_not_contain": 3,
+              "unknown": 1
+            },
+            "last_answered_at": {
+              "contains": "2026-10-10T05:00:00Z",
+              "shared_utensils": "2026-10-12T05:00:00Z",
+              "does_not_contain": "2026-10-15T05:00:00Z",
+              "unknown": "2026-10-16T05:00:00Z"
+            },
+            "last_confirmed_at": "2026-10-16T05:00:00Z",
+            "alpha": 1.79,
+            "beta": 3.512,
+            "score": 0.338,
+            "has_conflict": true
+          },
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": false,
+            "history_conflict": true,
+            "history_shared_utensils": true
+          }
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 4,
+          "display_name": "No alcohol",
+          "ai": {
+            "status": "possible_conflict",
+            "source": "recipe_inference",
+            "evidence": "The broth seasoning may use cooking sake.",
+            "weight": null
+          },
+          "current_answer": null,
+          "store_history": null,
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": false,
+            "history_conflict": false,
+            "history_cross_contact": false
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
 ### 6. `POST /menus/{menu_id}/confirmations`
 
@@ -263,25 +426,37 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 {
   "request_id": "66666666-6666-4666-8666-666666666666",
   "answers": [
-    {"dish_id": "33333333-3333-4333-8333-333333333331", "allergen_id": 4, "answer": "contains"},
-    {"dish_id": "33333333-3333-4333-8333-333333333331", "allergen_id": 6, "answer": "cross_contact"}
+    {
+      "dish_id": "33333333-3333-4333-8333-333333333331",
+      "allergen_id": 4,
+      "answer": "contains"
+    },
+    {
+      "dish_id": "33333333-3333-4333-8333-333333333331",
+      "allergen_id": 6,
+      "answer": "shared_utensils"
+    }
   ],
   "dietary_answers": [
-    {"dish_id": "33333333-3333-4333-8333-333333333331", "dietary_restriction_id": 4, "answer": "unknown"}
+    {
+      "dish_id": "33333333-3333-4333-8333-333333333331",
+      "dietary_restriction_id": 4,
+      "answer": "unknown"
+    }
   ],
   "publish_consent": true,
   "locale": "en"
 }
 ```
 
-`answer` の値：
+`answer` の値（アレルゲン）。⑬では上から順に並べ、単一選択とする。APIの値とDBの値の対応は「判定アルゴリズム」の表を参照する。旧値（`not_contains`・`cross_contact`）は422 `answers_invalid`。
 
-| 値 | カードの表示（日本語） | 結果の表示（英語） |
+| APIの値 | カードの表示（日本語） | 結果の表示（英語、`answer_label`） |
 |---|---|---|
-| `contains` | ある | Contains |
-| `cross_contact` | コンタミネーション（共用器具による交差接触） | Cross-contact (not an ingredient, but cooked with shared equipment) |
-| `not_contains` | ない | Does not contain |
-| `unknown` | 分からない | Unknown |
+| `contains` | 含まれる | Contains |
+| `shared_utensils` | 同じ料理器具を使っている | Shares cooking utensils (ingredients not confirmed) |
+| `does_not_contain` | 含まれない | Not an ingredient (cross-contact not confirmed) |
+| `unknown` | わからない | Unknown |
 
 レスポンス（201。同じ内容の再送は200）：
 
@@ -293,21 +468,92 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
   "user_publish_consent": true,
   "is_public": true,
   "replayed": false,
-  "results": [{
-    "dish_id": "33333333-3333-4333-8333-333333333331",
-    "display_name": "Shrimp tempura soba",
-    "allergens": [
-      {"allergen_id": 4, "display_name": "Shrimp", "answer": "contains", "answer_label": "Contains", "ai": {"status": "explicit_present", "source": "menu_text", "evidence": "海老天"}},
-      {"allergen_id": 6, "display_name": "Buckwheat", "answer": "cross_contact", "answer_label": "Cross-contact (not an ingredient, but cooked with shared equipment)", "ai": {"status": "possible", "source": "dish_name_inference", "evidence": "Soba noodles are usually made with buckwheat."}}
-    ],
-    "dietary_restrictions": [{
-      "dietary_restriction_id": 4,
-      "display_name": "No alcohol",
-      "answer": "unknown",
-      "answer_label": "Unknown",
-      "ai": {"status": "possible_conflict", "source": "recipe_inference", "evidence": "The broth seasoning may use cooking sake."}
-    }]
-  }]
+  "results": [
+    {
+      "dish_id": "33333333-3333-4333-8333-333333333331",
+      "display_name": "Shrimp tempura soba",
+      "allergens": [
+        {
+          "allergen_id": 6,
+          "display_name": "Buckwheat",
+          "answer": "shared_utensils",
+          "answer_label": "Shares cooking utensils (ingredients not confirmed)",
+          "ai": {
+            "status": "possible",
+            "source": "dish_name_inference",
+            "evidence": "Soba noodles are usually made with buckwheat.",
+            "weight": null
+          },
+          "store_history": null,
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": false,
+            "history_conflict": false,
+            "history_shared_utensils": false
+          }
+        },
+        {
+          "allergen_id": 4,
+          "display_name": "Shrimp",
+          "answer": "contains",
+          "answer_label": "Contains",
+          "ai": {
+            "status": "explicit_present",
+            "source": "menu_text",
+            "evidence": "海老天",
+            "weight": null
+          },
+          "store_history": {
+            "match_basis": "name_key",
+            "answer_counts": {
+              "contains": 1,
+              "shared_utensils": 2,
+              "does_not_contain": 3,
+              "unknown": 1
+            },
+            "last_answered_at": {
+              "contains": "2026-10-10T05:00:00Z",
+              "shared_utensils": "2026-10-12T05:00:00Z",
+              "does_not_contain": "2026-10-15T05:00:00Z",
+              "unknown": "2026-10-16T05:00:00Z"
+            },
+            "last_confirmed_at": "2026-10-16T05:00:00Z",
+            "alpha": 1.79,
+            "beta": 3.512,
+            "score": 0.338,
+            "has_conflict": true
+          },
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": false,
+            "history_conflict": true,
+            "history_shared_utensils": true
+          }
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 4,
+          "display_name": "No alcohol",
+          "answer": "unknown",
+          "answer_label": "Unknown",
+          "ai": {
+            "status": "possible_conflict",
+            "source": "recipe_inference",
+            "evidence": "The broth seasoning may use cooking sake.",
+            "weight": null
+          },
+          "store_history": null,
+          "notices": {
+            "ai_staff_mismatch": false,
+            "recheck_current_answer": true,
+            "history_conflict": false,
+            "history_cross_contact": false
+          }
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -316,7 +562,8 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 - ⑬では選択料理×対象項目の全組にちょうど1回答を求める。APIも各配列の料理集合と項目集合の直積が揃っていることを検証し、両配列が空でない場合は料理集合の一致も検証する。`unknown` は有効な明示回答、欠落・nullは未回答として拒否する。利用者の設定自体はDBに保持しないため、APIは未送信の設定までは復元しない。
 - APIはトークンをハッシュ化し、`complete_confirmation_session(menu_id, analysis_token_hash, request_id, answers, dietary_answers, publish_consent)` を1回だけ呼ぶ。確認の作成と回答の保存を分けて呼ばない。
 - `confirmed_at` はサーバー時刻。`publish_consent` は今回の店員の選択、`user_publish_consent` は解析時に保存した利用者の選択。`is_public` は両方trueかつ店舗ありの場合だけtrue。ゲストは店員が同意してもfalse。今回の確認の公開状態を返し、同じメニューの別の確認の同意で今回の回答を公開しない。
-- 公開可否が「いいえ」でも回答は保存し、同じ店舗の今後の予測に使う。店舗未選択の場合は保存するが、予測にも公開にも使わない。
+- 公開可否が「いいえ」でも回答は保存し、同じ店舗の今後の判定（履歴の集計）に使う。店舗未選択の場合は保存するが、履歴にも公開にも使わない。
+- `results` は回答した料理だけをメニューの順に返し、各項目に今回の回答（`answer`・`answer_label`）・AIの候補（`ai`）・保存後の履歴の集計（`store_history`、今回の回答を含む）・`notices` を付ける。
 - 新規確認は1メニュー5回まで（初期案）。既存の同一内容の再送は上限に数えず、上限到達後も200で返す。新規の6回目は422 `confirmation_limit_reached`。
 
 | 状況 | 結果 |
@@ -330,40 +577,74 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 
 ### 7. `GET /places/{google_place_id}/public-menus`（P1）
 
-⑦で店舗・正規化料理名ごとに公開データをまとめて返す。他の利用者が読み込んだ同じ店舗・同じ料理の結果も集計する。個別の読み込み履歴は返さない。
+⑦で店舗・正規化料理名ごとに公開データをまとめて返す。他の利用者が読み込んだ同じ店舗・同じ料理の結果も集計する。個別の読み込み履歴は返さない。認証なし。応答は `Cache-Control: no-store`。
 
 | クエリ | 必須 | 内容 |
 |---|---|---|
-| `allergen_ids` | 任意 | 閲覧者のアレルゲンID（カンマ区切り）。DBには保存しない |
-| `dietary_restriction_ids` | 任意 | 食事制限ID（カンマ区切り）。省略時は食事制限の予測なし。DBには保存しない |
+| `allergen_ids` | 任意 | 閲覧者のアレルゲンID（カンマ区切り）。省略時は代表料理のAIが明示した候補（不明を含む）。DBには保存しない |
+| `dietary_restriction_ids` | 任意 | 食事制限ID（カンマ区切り）。省略時は食事制限の判定なし。DBには保存しない |
 | `locale` | 任意 | `en` のみ |
 
 ```json
 {
   "google_place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
-  "dishes": [{
-    "name_key": "海老天そば",
-    "name": "海老天そば",
-    "display_name": "Shrimp tempura soba",
-    "description": "Buckwheat noodles in hot broth topped with shrimp tempura.",
-    "price": 1200,
-    "currency": "JPY",
-    "allergens": [{
-      "allergen_id": 4,
-      "display_name": "Shrimp",
-      "prediction": {"status": "contains", "basis": "ai_and_store_answers", "vote_shares": {"contains": 0.8, "cross_contact": 0.0, "not_contains": 0.2}},
-      "ai": {"status": "explicit_present", "source": "menu_text", "evidence": "海老天"},
-      "store_history": {"answer_counts": {"contains": 2, "cross_contact": 0, "not_contains": 1, "unknown": 0}, "last_confirmed_at": "2026-10-17T03:10:00Z", "has_conflict": true}
-    }],
-    "dietary_restrictions": []
-  }]
+  "match_basis": "name_key",
+  "staff_answers_verified": false,
+  "dishes": [
+    {
+      "name_key": "海老天そば",
+      "name": "海老天そば",
+      "display_name": "Shrimp tempura soba",
+      "description": "Buckwheat noodles in hot broth topped with shrimp tempura.",
+      "price": 1200,
+      "currency": "JPY",
+      "allergens": [
+        {
+          "allergen_id": 4,
+          "display_name": "Shrimp",
+          "ai": {
+            "status": "explicit_present",
+            "source": "menu_text",
+            "evidence": "海老天",
+            "weight": null
+          },
+          "store_history": {
+            "match_basis": "name_key",
+            "answer_counts": {
+              "contains": 1,
+              "shared_utensils": 2,
+              "does_not_contain": 3,
+              "unknown": 1
+            },
+            "last_answered_at": {
+              "contains": "2026-10-10T05:00:00Z",
+              "shared_utensils": "2026-10-12T05:00:00Z",
+              "does_not_contain": "2026-10-15T05:00:00Z",
+              "unknown": "2026-10-16T05:00:00Z"
+            },
+            "last_confirmed_at": "2026-10-16T05:00:00Z",
+            "alpha": 1.79,
+            "beta": 3.512,
+            "score": 0.338,
+            "has_conflict": true
+          },
+          "notices": {
+            "history_conflict": true,
+            "history_shared_utensils": true
+          }
+        }
+      ],
+      "dietary_restrictions": []
+    }
+  ]
 }
 ```
 
 - `published_menus`・`published_confirmation_answers`・`published_dietary_answers` だけを使う。全ビューは店舗あり・利用者同意true・店員同意trueを必要とする。どちらかが不同意の回答の内容・件数は返さない。
-- 同じ店舗の `name_key` ごとに1料理とする。名称・訳・説明・価格・AI候補は公開対象のうち撮影日時が最新の料理から採用し、同日時は料理IDの降順で選ぶ。AIの仮の票はその代表料理の1件分だけを使い、回答は同じ料理・同じ項目の公開回答を全利用者分集計する。
+- 同じ店舗の `name_key` ごとに1料理とする。名称・訳・説明・価格・AI候補は公開対象のうち撮影日時が最新の料理から採用し、同日時は料理IDの降順で選ぶ。AIの候補は代表料理のものを別に返し、店員回答と合成しない。回答は同じ料理・同じ項目の公開回答を全利用者分、「判定アルゴリズム」と同じ規則で集計する（同じメニューは最新の1件）。
+- 公開集計には「今回の回答」はなく、各項目は `ai`・`store_history`・`notices`（`history_conflict`・`history_shared_utensils`／食事制限は `history_cross_contact`）だけを返す。`match_basis="name_key"` は料理名による暫定の照合、`staff_answers_verified=false` は店員の回答が未認証であることを示す。
 - `store_history` は集計であり個別履歴ではない。公開APIに所有者ID・`menu_id`・`dish_id`・`session_id`・個別の確認カードを返さない。画像・トークン・本人の選択設定も返さない。
-- 上の得票割合は3回答が同時刻、明記のAI重み2.0・各回答重み1.0の場合の例。回答の不一致は件数・最終日時とともに示す。
+- 回答の不一致は件数・最終日時とともに示す。
 - 代表料理の撮影日時の降順、同日時は `name_key` 順で返す。公開対象がなければ `dishes` は空配列。店名・座標は返さず、画面は周辺検索の結果を使う。
 - ⑦の個別履歴欄はAPI 16を店舗で絞って別途取得する。公開集計と本人の履歴を混ぜない。
 
@@ -529,9 +810,9 @@ IDは昇順、未登録は空配列。空配列を「食事制限がないと確
 |---|---|
 | `user_publish_consent` | この解析に保存された利用者同意 |
 | `is_public` | 当該メニューに公開可能な確認が1件以上あるか |
-| `confirmations` | 当該メニューに保存された確認のみ。新しい順の `session_id`・`confirmed_at`・店員の `publish_consent`・当該確認の `is_public`・`results`（API 6と同じ料理別回答形式）。未確認なら空配列 |
+| `confirmations` | 当該メニューに保存された確認のみ。新しい順（同日時はIDの降順）の `session_id`・`confirmed_at`・店員の `publish_consent`・当該確認の `is_public`・`results`（API 6と同じ料理別回答形式）。未確認なら空配列 |
 
-- `dishes[].allergens[].store_history` と `dishes[].dietary_restrictions[].store_history` は他の人の結果も加味した予測用集計、`confirmations` は本人が読み込んだこのメニューでの個別回答。別の人の読み込みに紐づく確認は、公開されていても `confirmations` に入れない。
+- `dishes[].allergens[].store_history` と `dishes[].dietary_restrictions[].store_history` は他の人の結果も加味した履歴の集計（`current_answer` はこのメニューの最新の確認）、`confirmations` は本人が読み込んだこのメニューでの個別回答。別の人の読み込みに紐づく確認は、公開されていても `confirmations` に入れない。
 - 解析トークンが失効していても本人の履歴閲覧は可能。読み取り専用であり、店員回答を追加する権限や解析用トークンの再発行はしない。
 - 画像は原則24時間で削除されるが解析済みテキストと回答は履歴として残す。履歴保持期間・アカウント削除時の扱いは一般公開前に決める。
 - ゲストはこのAPIを使わず、現在のタブの解析一覧と保存成功時の結果だけを表示する。登録後にゲスト解析を自動で移管しない。
@@ -540,18 +821,40 @@ IDは昇順、未登録は空配列。空配列を「食事制限がないと確
 
 確認条件とIDは [食事制限マスタ](database.md#dietary-master) を共用する。API 4・5・7・17の料理には `dietary_restrictions` 配列を返し、未指定なら空配列。API 6の入力は `dietary_answers`、出力は `results[].dietary_restrictions` とする。
 
-| 値 | ⑬の日本語 | ⑮の英語 |
-|---|---|---|
-| `not_supported` | 対応できない | Not supported |
-| `supported` | 対応している | Supported (staff answer) |
-| `cross_contact` | 共用器具による交差接触 | Cross-contact |
-| `unknown` | 分からない | Unknown |
+| 値（APIとDBで同じ） | ⑬の日本語（この順に並べる） | ⑮の英語（`answer_label`） | 履歴の集計 |
+|---|---|---|---|
+| `not_supported` | 対応できない | Not supported | α |
+| `cross_contact` | 共用器具による交差接触 | Cross-contact | 加算しない（件数・日時だけ） |
+| `supported` | 対応している | Supported (staff answer) | β |
+| `unknown` | わからない | Unknown | 加算しない（件数・日時だけ） |
 
 アレルゲンとは別ID・別回答配列で扱い、公開条件・再送判定・件数上限は両配列に適用する。`supported` は未認証の店員回答であり、安全性や認証の保証ではない。
 
 ## 判定アルゴリズム
 
-`apps/api/app/services/assessment.py` に実装する。料理×確認項目ごとに、AIの候補と同じ店舗の過去の店員確認を組み合わせる。得票割合は確率ではなく、安全性・適合性を保証しない。結果に関わらず店員への確認を促す。
+`apps/api/app/services/assessment.py` に実装する。料理×確認項目ごとに、次の4つを**別々に**返し、一つの値に合成しない。結果は保存せず、呼び出すたびに計算する。「安全」「食べられる」に当たる値は返さない。
+
+| 項目 | 内容 | API |
+|---|---|---|
+| `ai` | AIの候補・根拠・根拠の分類ごとの重み | 4・5・6・7・17 |
+| `current_answer` | このメニューの今回の店員回答（料理・項目ごとの最新の確認）。未回答は `null` | 4（常に `null`）・5・17。6は `answer`・`answer_label` |
+| `store_history` | 同じ店舗の過去の店員回答の集計 | 4・5・6・7・17 |
+| `notices` | 表示ルールに使う判定 | 4・5・6・7・17（7は履歴の判定だけ） |
+
+旧方式の `prediction`・`basis`・`vote_shares` とAIの仮の票（`ai_prior`、`AI_PRIOR_WEIGHT_*`）は廃止した（2026-10-17）。
+
+### 判定アルゴリズムの資料との関係
+
+本節を正本とする。基にした資料は `apps/api/docs/algorithms.md`（論文を参考にした実装案。Git管理外の作業資料）で、MVPでは次の点が異なる（2026-10-17にユーザーが決定）。
+
+| 項目 | algorithms.md | 本書（MVP） |
+|---|---|---|
+| 履歴の数値集計（α・β・S） | 店員認証・重複排除・料理の同一性確認の後に有効化 | MVPから有効にする |
+| 履歴の照合範囲 | 店舗・料理・レシピ版が一致するもの。料理名だけでは同一とみなさない | 同じ店舗・`name_key`・項目IDによる暫定の照合（`match_basis="name_key"`）。レシピ版による同一性は未決 |
+| 重複の扱い | 同じ確認の再送・転載、同じ回答者・確認資料に由来する回答を重複加算しない | 再送は `request_id` で1件（RPC）。同じメニューへの複数回の確認は最新の1件だけを数える。回答者・確認資料の同一性は判定できない |
+| 公開集計 | 店舗関係者と確認できない回答を除外 | 全回答が未認証のため除外できない。`staff_answers_verified=false` で未認証の回答であることを示す |
+| 食事制限 | 記載なし | アレルゲンと同じ規則（下表） |
+| フィールド名 | `answer_status` | `answer`（DBの列名と同じ） |
 
 ### AIの候補
 
@@ -559,70 +862,81 @@ VLMが自己申告する確信度は使わない。各料理×項目の候補に
 
 | 優先 | `source` | 根拠 | アレルゲンの `status` | 食事制限の `status` |
 |---|---|---|---|---|
-| 1 | `menu_text` | 含有・条件への抵触が原文に明記 | `explicit_present` | `explicit_conflict` |
-| 2 | `recipe_inference` | 記載された原材料・説明からレシピを推定 | `possible` | `possible_conflict` |
-| 3 | `dish_name_inference` | 料理名だけから推定 | `possible` | `possible_conflict` |
+| 1 | `menu_text` | メニューに含有・抵触の記載がある | `explicit_present` | `explicit_conflict` |
+| 2 | `recipe_inference` | 一般的な参照レシピに含まれる（その店舗の実際のレシピではない） | `possible` | `possible_conflict` |
+| 3 | `dish_name_inference` | 料理名からの推定 | `possible` | `possible_conflict` |
 | — | `unavailable` | 記載なし・判読不能・根拠不足 | `unknown` | `unknown` |
 
-- 同じ料理・アレルゲンに複数の根拠がある場合、優先順位の最も高い一つだけを残す。
-- `status` と `source` の組が上表と異なる出力は不正として扱い、502 `invalid_ai_output` とする。
-- `menu_text` の `evidence` には対応する原文を入れる。推定の `evidence` には推定理由を入れる。
-- AIは交差接触・不使用・食事制限への対応可を確定しない。全29品目・食事制限4種のマスタを渡し、利用者の選択設定は渡さない。候補にない項目も確認対象に選べ、根拠がなければ `unknown` とする。
+- 4分類は根拠の種類であり、安全度や含有確率の4段階ではない。アレルゲン／食事制限の `status` は各3値、`source` は4値を維持する。
+- まず出力全体の構造・型・列挙値とマスタIDを検証する。その上で、許可された `status` と `source` の組が上表と異なる場合、または不明以外で根拠が空・空白だけの場合は、その料理×項目だけを `unknown`／`unavailable`／`evidence=""` へ復旧する。正しい不明も根拠を空に統一する。矛盾した判定を明示的な含有・抵触へ格上げしない。
+- 正規化後に組み合わせ・根拠を再検証し、同じ料理・項目の重複は上表の優先順位で一つだけ残す。同順位は先頭を採用する。有効な候補を、不整合から復旧した不明で消さない。
+- フィールド欠落・型不正・未知ID・未定義の列挙値（`supported`・`not_contains`等）・壊れたJSON・無効な料理情報は従来どおり502 `invalid_ai_output`。0料理は422。有効な料理があり全候補が不明なら201。Geminiの429・接続障害・タイムアウトや保存障害を不明の成功へ変換しない。
+- 正規化済みの候補を `ai_result` に保存し、API 5・6・7・17でも同じ不明を再利用する。`allergen_ids` 省略時はAIが明示した候補を不明も含めて返し、未列挙の全29項目を補わない。指定時は指定項目すべてを返す。食事制限は指定時だけ返す。選択設定は保存しない。
+- AIの不明は店員回答ではない。未回答は `current_answer=null` のままで、確認の件数や履歴のα・βへ加算しない。`recheck_current_answer` は店員の不明回答専用。原因コードと復旧件数だけをログへ記録する。
+- 新規解析はプロンプトv5。API 5・17は保存済みv4も受け付け、その版を返す。既存データの一括書換えは行わない。
+- `menu_text` の `evidence` には対応する原文、推定の `evidence` には推定理由を入れる。「卵不使用」「除去可能」や別の料理の注記を含有の記載にしない。
+- 記載がないことを「含まない」と解釈しない。候補がない項目は `unknown`／`unavailable`。AIは交差接触・不使用・食事制限への対応可を判断しない。
+- `weight`：根拠の分類ごとの重み `w=(c+1)/(n+2)`（n：その分類で候補を出した検証件数、c：店舗のレシピ・原材料表示で含有を確認できた件数）。検証データがないMVPでは常に `null` とし、根拠の原文・推定理由を表示する。重みが低くても候補を「なし」に変えない。
 
-### 過去の店員確認の範囲
+### 店員回答の値
 
-次の条件をすべて満たす回答を使う。明示的な `unknown` も履歴の件数・最終日時には含めるが、判定の票には加えない。
+アレルゲンの4択はAPIとDBで値の名前が異なり、APIで変換する（変換は `apps/api/app/services/answers.py` の1か所。RPCにはDBの値を渡す）。
 
-- 同じ店舗（`restaurant_id`）。店舗未選択のメニューの回答は使わない。
-- 同じ料理名キー（`dishes.name_key`）。料理名をNFKCで正規化し、空白を除いて小文字にしたもの。
-- 同じアレルゲン。
-- 解析・本人履歴の予測（API 4・5・17）は公開・非公開の両方を使う。公開集計（API 7）は店舗あり・利用者同意あり・店員同意ありの回答だけを使う。
+| 画面の選択肢（⑬の順） | APIの値 | DBの値 | 意味 | 履歴の集計 |
+|---|---|---|---|---|
+| 含まれる | `contains` | `contains` | 原材料に含まれる | α |
+| 同じ料理器具を使っている | `shared_utensils` | `cross_contact` | 対象を使う別の料理と器具を共有している。原材料への含有は未確認 | 加算しない。件数・日時を別に表示 |
+| 含まれない | `does_not_contain` | `not_contains` | 原材料に使っていないと確認できる。交差接触がないことは意味しない | β |
+| わからない | `unknown` | `unknown` | いずれも確認できない | 加算しない。件数・日時を別に表示 |
+
+- 店員には選択順を案内する：原材料への含有を確認できる→「含まれる」、それ以外で器具共有が分かる→「同じ料理器具を使っている」、それ以外で原材料に使っていないと確認できる→「含まれない」、いずれも確認できない→「わからない」。単一選択のため、選ばれなかった事実を自動で補わない。
+- 「同じ料理器具を使っている」の意味は、旧ラベル「原材料ではないが器具を共有」から「含有は不明」に変わった。2026-10-17時点で本番兼用DB（`Meelyze-plus`）に回答はなく、旧ラベルで入力された回答の扱いは不要。
+- 食事制限はAPIとDBで同じ値（`not_supported`→α、`supported`→β、`cross_contact`・`unknown` は加算しない）。⑬の順は「対応できない→共用器具による交差接触→対応している→わからない」。
+- 未回答はレコードなし（`current_answer: null`）とし、`unknown` と区別する。
+
+### 履歴の範囲
+
+次の条件をすべて満たす回答を使う。
+
+- 同じ店舗（`confirmation_sessions.restaurant_id`）。店舗未選択のメニューの回答は使わず、店舗未選択の解析では `store_history` は常に `null`。
+- 同じ料理名キー（`dishes.name_key`）。料理名をNFKCで正規化し、空白を除いて小文字にしたもの。表記ゆれは統合しない。
+- 同じ項目ID。アレルゲンと食事制限は混ぜない。
+- 解析・再取得・本人履歴（API 4・5・17）と確認の結果（API 6）は公開・非公開の両方を使う。公開集計（API 7）は公開ビューの回答（店舗あり・利用者同意・店員同意）だけを使う。
+- 同じメニューへの複数回の確認は、最新の1件だけを数える（同じ日時に同名の料理が2つある場合は⑬の順で先の回答）。このメニュー自身の最新の回答も履歴に含める。
+- 範囲内の回答が0件なら `store_history` は `null`。
 
 ### 計算式
 
-AIの候補を仮の票、過去の店員確認を時間で減衰する票として数え、3つの回答（`contains`／`cross_contact`／`not_contains`）ごとに合計する。
-
-```
-w_i = 2 ** (-d_i / STORE_ANSWER_HALF_LIFE_DAYS)     # d_i：回答からの経過日数（小数）。初期値30日
-
-votes[contains]      = ai_prior + Σ w_i  (回答が contains)
-votes[cross_contact] =            Σ w_i  (回答が cross_contact)
-votes[not_contains]  =            Σ w_i  (回答が not_contains)
-
-vote_shares[k] = votes[k] / Σ votes
+```text
+w_i = 2 ** (-d_i / STORE_ANSWER_HALF_LIFE_DAYS)   # d_i：回答からの経過日数（小数、未来は0）。初期値30日（仮設定）
+α = 1 + Σ w_i（含まれる／not_supported）
+β = 1 + Σ w_i（含まれない／supported）
+S = α / (α + β)                                     # α・βに加算する回答が0件なら null
 ```
 
-| AIの `status` | `ai_prior`（初期値・仮設定） |
-|---|---|
-| `explicit_present` | `AI_PRIOR_WEIGHT_EXPLICIT = 2.0` |
-| `possible` | `AI_PRIOR_WEIGHT_POSSIBLE = 1.0` |
-| `unknown` | 0 |
+- `store_history` は `match_basis`・4択それぞれの件数（`answer_counts`）と最終日時（`last_answered_at`）・`last_confirmed_at`・`alpha`・`beta`・`score`（S。いずれも小数3桁）・`has_conflict` を返す。
+- 例：重みがすべて1で、含まれる1・含まれない3・器具共有2・わからない1なら α=2、β=4、S≈0.333。器具共有と不明は件数だけ。
+- 重みは経過0日・30日・60日で1.00・0.50・0.25。半減期は食品情報の有効期限を意味しない。
+- `S` は含有・非含有を明示した回答内の「含まれる」の傾向で、全回答に占める割合や含有確率ではない。画面では4択すべての件数・日時を優先して表示する。
+- `has_conflict`：α側とβ側の回答が両方ある。器具共有・不明だけでは立てない。
 
-### 予測の決め方
+### 表示ルール（`notices`）
 
-| 条件 | `basis` | `status` | `vote_shares` |
-|---|---|---|---|
-| 範囲内の店員確認がない | `ai_only` | AIの `explicit_present`→`contains`、`possible`→`possible`、`unknown`→`unknown` | `null` |
-| 範囲内に `unknown` 以外の店員確認がある | `ai_and_store_answers` | `vote_shares` が最大の回答。同率の場合は `contains` → `cross_contact` → `not_contains` の順に慎重な方を選ぶ | 小数3桁 |
+| 項目 | 条件 | 画面 |
+|---|---|---|
+| `ai_staff_mismatch` | AIの `explicit_present`（食事制限は `explicit_conflict`）と、今回の回答 `does_not_contain`（`supported`） | 根拠と回答を併記し、再確認を案内 |
+| `recheck_current_answer` | 今回の回答が `unknown` | 「わからない」と再確認の案内 |
+| `history_conflict` | 履歴の `has_conflict` | 「過去の回答に不一致あり」と件数・日時 |
+| `history_shared_utensils`（食事制限は `history_cross_contact`） | 履歴に器具共有（`cross_contact`）がある | 「過去に器具共有の回答あり」と件数・日時を別表示 |
 
-- `unknown` しかない場合はAIのみの分類を維持し、`basis=ai_and_store_answers`、`vote_shares=null` とする。「店員回答は不明のみ」と件数を表示する。ゼロ票の除算はしない。
-- `store_history.answer_counts` は `contains`・`cross_contact`・`not_contains`・`unknown` の4キーを必ず返す（0件も含む）。最終確認日時には不明回答も含める。`has_conflict` は不明回答だけでは立てない。
-- `has_conflict`：範囲内の回答に `contains` と `not_contains` が両方ある場合に `true`。画面では予測より優先して「回答不一致・要再確認」と表示する。
-- 計算例：AIが `possible`（1.0票）、店員確認が当日の `not_contains`（1.0票）と30日前の `not_contains`（0.5票）の場合、`contains` 0.4、`not_contains` 0.6 で、予測は `not_contains`。画面には「過去の店員確認では『含まれない』が多い（2件・最終確認日）。今回も確認してください」と表示する。
+- AIの含有候補と器具共有の回答は両立するため、食い違いに数えない。推定の候補（`possible`）と「含まれない」も食い違いに数えない。
+- 今回の回答の表示：含まれる／含まれない（交差接触は未確認）／器具共有（含有は未確認）／わからない（再確認）／未回答（`null`）。
+- 公開集計（API 7）には今回の回答がないため、`notices` は `history_conflict` と器具共有の2項目だけ。
 
 ### 制約
 
-- 予測が `not_contains` でも、「安全」「食べられる」と表示しない。店員確認カードの対象から外さない。
-- 予測は保存しない。呼び出すたびに計算する。過去の回答も上書きしない。
+- 過去の「含まれない」や低いAIの重みから、自動で「安全」「食べられる」と判定しない。店員確認カードの対象から外さない。
+- 判定は保存しない。過去の回答も上書きしない。
 - 店員の回答は利用者の端末で入力された未認証のものなので、全回答を同じ重みで扱う。誤った回答や悪意のある回答が混ざる可能性を画面で伝える（件数と日時を必ず表示する）。
-- `ai_prior` の初期値と半減期は仮設定。検証データで評価するまで変えない。
-
-### 食事制限への適用
-
-計算は同じ店舗・同じ `name_key`・同じ `dietary_restriction_id` に限定し、アレルゲンの票と混ぜない。`explicit_conflict` は2.0票、`possible_conflict` は1.0票を `not_supported` に加え、過去回答の `not_supported`／`cross_contact`／`supported` を同じ半減期で集計する。`unknown` は票に加えない。
-
-- 回答なし・不明回答のみの場合はAIの `explicit_conflict`→`not_supported`、`possible_conflict`→`possible`、`unknown`→`unknown`。不明回答のみの場合の `basis`・件数表示はアレルゲンと同じ。
-- 有効な回答がある場合は最多票を選ぶ。同率は `not_supported`→`cross_contact`→`supported` の順。両極の回答（`not_supported` と `supported`）が混在したら `has_conflict=true`。
-- `vote_shares` は `not_supported`・`cross_contact`・`supported` の3キー、`answer_counts` はこれらと `unknown` の4キー。
-- 公開用の予測では `published_dietary_answers` だけを使う。公開同意なしの回答の内容・件数を混ぜない。
-- `supported` でも「対応を保証」「認証済み」と表示しない。必ず未認証の過去回答と分かるラベル・件数・日時を添える。
+- 半減期は仮設定。検証データで評価するまで変えない。
+- `supported` でも「対応を保証」「認証済み」と表示しない。

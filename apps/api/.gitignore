@@ -1,0 +1,12 @@
+# 秘密値を含むためコミットしない
+.env
+.env.*
+!.env.example
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+docs/
+task/
