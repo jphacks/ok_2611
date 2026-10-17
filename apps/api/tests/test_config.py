@@ -48,3 +48,27 @@ def test_upstash_requires_url_and_token(monkeypatch):
     monkeypatch.setenv("KV_REST_API_TOKEN", "token")
     settings = Settings(_env_file=None)
     assert settings.upstash_redis_rest_url == "https://example.upstash.io"
+
+
+def test_settings_error_does_not_include_secret_values(monkeypatch, tmp_path):
+    """起動時の設定エラーのメッセージ・トレースバックに秘密値を出さない（Vercelの関数ログに残るため）。"""
+    import traceback
+
+    from app import config
+
+    secret = "sb_secret_DO_NOT_LOG_0123456789abcdef"
+    monkeypatch.setattr(config.Settings, "model_config", {**config.Settings.model_config, "env_file": tmp_path / "none.env"})
+    for name in ("UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN", "KV_REST_API_URL", "KV_REST_API_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", secret)
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-DO-NOT-LOG")
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("RATE_LIMIT_BACKEND", "upstash")  # Upstashの変数がない
+    try:
+        config.load_settings()
+    except config.SettingsError as exc:
+        text = "".join(traceback.format_exception(exc))
+    else:
+        raise AssertionError("SettingsError was not raised")
+    assert "UPSTASH_REDIS_REST_URL" in text  # 理由は分かる
+    assert secret not in text and "AIza-DO-NOT-LOG" not in text and "input_value" not in text

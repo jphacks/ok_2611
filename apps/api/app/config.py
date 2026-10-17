@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 API_DIR = Path(__file__).resolve().parent.parent
@@ -95,6 +95,27 @@ def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+class SettingsError(RuntimeError):
+    """設定の誤り。メッセージは項目名と理由だけで、入力値（秘密値を含みうる）を含めない。"""
+
+
+def load_settings() -> Settings:
+    """環境変数・`.env` から設定を読む。
+
+    pydantic の ValidationError の文字列は入力値（`input_value`）を含み、モデル全体の検証では
+    `SUPABASE_SECRET_KEY` などの秘密値がそのまま起動時のログ（Vercelの関数ログ）に出る。
+    そのため項目名と理由だけの例外に置き換え、元の例外も連鎖させない。
+    """
+    try:
+        return Settings()
+    except ValidationError as exc:
+        reasons = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc']) or 'settings'}: {error['msg']}"
+            for error in exc.errors(include_input=False, include_url=False, include_context=False)
+        )
+        raise SettingsError(f"invalid settings: {reasons}") from None
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return load_settings()

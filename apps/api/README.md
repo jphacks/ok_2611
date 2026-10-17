@@ -461,9 +461,18 @@ LOCAL_SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres .v
 - 実接続（ローカルのUvicorn、DBはローカルSupabase、`.env` のGemini・Placesの実キー）：health、マスタ29件・4件、CORSのプリフライト（許可するオリジンは200、それ以外は400で `Access-Control-Allow-Origin` なし）、周辺検索20件（`no-store`）、実際のPlace IDを指定した解析が201（約14秒、4料理）、再取得200、店員確認201・再送200（ゲストのため `is_public=false`）、確認後の再取得で今回の回答と履歴を確認。解析・再取得・確認の応答は `no-store`。アクセスログ・アプリのログに、トークン・座標・Place ID・APIキー・画像パス・クエリ（選択した対象ID）が出ないことを確認。試験データは削除した。
 - `Meelyze-plus` への読み取り確認（ローカルのAPIを `.env` の接続先で起動し、書き込まないGETだけ）：最初は `.env` のSecret keyが401 `Invalid API key` で拒否されたため、ユーザーがキーを入れ替えた。入れ替え後はhealth 200、マスタ29件・4件、周辺検索20件（公開料理数は全店舗0件）、トークンなしの再取得401、存在しないメニュー404を確認（2026-10-17）。DBには書き込んでいない。
 - Geminiの実キーで429（利用上限）が一度発生し、APIは503 `service_unavailable` を返して何も保存しなかった。無料枠などの上限の確認は00のU1。
+- 公開環境（Vercel、`https://meelyze-api.vercel.app`、`main` からのデプロイ、DBは本番兼用の `Meelyze-plus`、2026-10-17に [09](task/09_vercel_setup.md) の手順後に実施）。書き込みを伴う操作は行っていない：
+  - HTTPSで `/api/v1/health` が `{"status":"ok"}`（約1秒）、マスタ29件・4件。
+  - 周辺検索（東京駅付近）200・20件・`no-store`（約2秒）、公開料理数は全店舗0件で、公開メニュー（API 7）は200・`dishes: []`・`no-store`。
+  - CORS：`http://localhost:8081` からのプリフライト（POST、Authorization・Content-Type）は200で `Access-Control-Allow-Origin` あり、別のオリジンは400でなし。デプロイ保護によるブロックなし。
+  - 書き込まないエラー応答：未定義クエリ・`locale=ja`・重複／未知の対象IDの422、トークンなしの再取得・`/me` の401、存在しないメニューの404、存在しないメールでのログインの401 `invalid_credentials`、本文不足の422、解析用トークンの形式のBearerでの `/me` の401。すべて共通形式・`no-store`。
+  - 画像送信と同梱ファイル：真っ白なJPEG（店舗なし）がGeminiまで届き422 `unreadable_menu`（約7.2秒）。`prompts/`・`contracts/` の読込とGeminiの接続をVercel上で確認。GIFは415、3 MiBの送信はVercelの上限（4.5MB）より先にAPIの413 `image_too_large`。
+  - 共有レート制限：新しい1分のウィンドウで解析要求（GIF）を7回送り、1〜5回目415、6・7回目429 `rate_limited`。Vercel上は `RATE_LIMIT_BACKEND=memory` では起動しない設計のため、Upstash（`KV_REST_API_URL`・`KV_REST_API_TOKEN`）で数えている。クライアントIPはVercelの転送ヘッダーで判定されている。
+  - 確認後に `Meelyze-plus` を読み取りで確認し、メニュー・料理・店舗・確認・アカウントはすべて0件、Storageのオブジェクトも0件（書き込みなし）。
+  - Vercelのログ（ユーザーがダッシュボードから書き出した、08:41〜09:11 UTCの35件）：要求のログはメソッド・パス（クエリなし＝座標なし）・ステータスだけで、トークン・APIキー・メール・画像パスは出ていない。アプリのログはGemini SDKの `AFC is enabled with max remote calls: 10.`（情報レベル、機密なし）だけ。パスにはPlace ID・`menu_id` が含まれる（ログ出力の禁止対象ではない）。
+  - 上記のログで、環境変数を設定する前の最初のデプロイが `RATE_LIMIT_BACKEND=memory` の設定エラーで起動しなかったこと（想定どおり）を確認。その際のpydanticのエラーは入力値（`input_value`、先頭・末尾の約25文字に切り詰めた設定の辞書）を表示しており、設定の組み合わせによっては秘密値の一部が関数ログに出うるため、`app/config.py` の `load_settings` で項目名と理由だけの `SettingsError` に置き換えた（元の例外も連鎖させない。`tests/test_config.py` で確認）。**この修正はまだデプロイしていない**（mainへの反映後に有効）。
 - 未実施・未検証：
-  - Vercelへのデプロイ（このPCにVercel CLIのログイン・プロジェクトの連携がなく、Upstashの環境変数もないため。00のU2）。公開URLでのHTTPS・ファイル読込・画像送信・実行時間・CORS・デプロイ保護、Vercelの転送ヘッダーでのクライアントIP。
-  - 共有レート制限の実際のUpstash接続（REST APIの形式はモックで確認済み）。
+  - 公開URLでの書き込みを伴う一巡（解析の成功・店員確認・登録・ログイン成功・本人設定。本番兼用DBのため未実施）、P1の成功応答。
   - フロント・スマートフォンでの一巡（00のU3）。**API検証済み／アプリ全体は未完**。
   - 実際のメニュー写真での読取精度、20料理に近いメニューでの所要時間。
   - 08の正本更新（`docs/api.md`・`contracts/openapi.yaml`・`docs/screens.md`・`docs/development.md`）。
