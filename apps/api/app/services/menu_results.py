@@ -1,7 +1,7 @@
 """API 4・5 の応答の組み立て（AI・履歴・注意表示の部分はAPI 6でも使う）。判定は呼び出すたびに計算し、保存しない。
 
 - 対象のアレルゲン：`allergen_ids` を指定すればその項目（候補がなければAIは `unknown`）、省略すれば
-  料理ごとにAIが候補に挙げた項目（`unknown` 以外）。並びはマスタの表示順。
+  料理ごとにAIが明示した項目（不明へ復旧したものも含む）。並びはマスタの表示順。
 - 対象の食事制限：`dietary_restriction_ids` で指定した項目だけ。省略時は空配列。
 - 利用者の選択設定は対象の選択にだけ使い、保存・ログ出力しない。
 """
@@ -84,11 +84,15 @@ def ai_candidates(ai_result: dict, key: str, id_key: str) -> dict[int, AiCandida
 
 
 def allergen_targets(dish: DishRow, targets: Targets, masters: dict[int, MasterName]) -> list[int]:
-    if targets.allergen_ids is not None:
-        ids = targets.allergen_ids
+    return allergen_target_ids(dish.ai_result, targets.allergen_ids, masters)
+
+
+def allergen_target_ids(ai_result: dict, selected_ids: list[int] | None, masters: dict[int, MasterName]) -> list[int]:
+    """公開・非公開で共通の対象選択。省略時も明示的な不明を消さない。"""
+    if selected_ids is not None:
+        ids = selected_ids
     else:
-        candidates = ai_candidates(dish.ai_result, "allergens", "allergen_id")
-        ids = [item_id for item_id, c in candidates.items() if c.status != "unknown"]
+        ids = list(ai_candidates(ai_result, "allergens", "allergen_id"))
     return sorted(set(ids), key=lambda item_id: masters[item_id].display_order)
 
 

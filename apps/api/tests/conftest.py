@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from postgrest.exceptions import APIError
@@ -144,3 +147,8 @@ def app(settings, fake_supabase):
 @pytest.fixture
 def client(app) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.fixture
+def okinawa_output():
+    return json.loads((Path(__file__).parent / "fixtures" / "okinawa_menu_v4.json").read_text())

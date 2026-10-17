@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Meelyze+ menu analysis output (prompt v4)",
-  "description": "Geminiの構造化出力の契約。APIはこのスキーマで検証した後、項目IDのマスタ照合・statusとsourceの組・価格の小数桁・料理名キーを追加で検証する。未定義のフィールドは拒否する。",
+  "title": "Meelyze+ menu analysis output (prompt v5)",
+  "description": "Gemini出力の構造・型・列挙値を検証する入力契約。APIはマスタID・価格・料理名を検証し、許可値内のstatus/source不整合と空の根拠だけを項目単位でunknown/unavailableへ正規化した後、組を厳密に検証する。未定義フィールド・未知ID・未定義値は拒否する。",
   "type": "object",
   "additionalProperties": false,
   "required": ["dishes"],
@@ -75,12 +75,12 @@
   "$defs": {
     "source": {
       "type": "string",
-      "description": "根拠の分類。優先順：menu_text（メニューの記載）→ recipe_inference（一般的な参照レシピ。その店舗の実際のレシピではない）→ dish_name_inference（料理名からの推定）→ unavailable（根拠なし・判読不能）。",
+      "description": "根拠の4分類。優先順：menu_text（メニュー記載）→ recipe_inference（一般レシピの推定。その店舗のレシピではない）→ dish_name_inference（料理名からの推定）→ unavailable（記載なし・判読不能・根拠不足・分類不能）。不明は正常な結果。",
       "enum": ["menu_text", "recipe_inference", "dish_name_inference", "unavailable"]
     },
     "evidence": {
       "type": "string",
-      "description": "menu_textは対応する原文、推定は推定理由（英語）、unavailableは空文字可。",
+      "description": "menu_textは当該料理に対応する原文、推定は推定理由（英語）、unavailableは空文字。未知の根拠や別料理の記載を補わない。",
       "maxLength": 500
     },
     "allergen_candidate": {

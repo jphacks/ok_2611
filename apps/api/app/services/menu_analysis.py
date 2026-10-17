@@ -1,10 +1,10 @@
 """Geminiによるメニュー画像の解析と、出力の検証。
 
-- プロンプト `prompts/menu_analysis.md`（v4）と出力の契約 `contracts/menu_analysis.schema.json` は
+- プロンプト `prompts/menu_analysis.md`（v5）と出力の契約 `contracts/menu_analysis.schema.json` は
   `apps/api/` 配下に置く（VercelのRoot Directory `apps/api` の中に入れるため）。
 - Geminiへは画像と全マスタ（アレルゲン29・食事制限4）だけを送り、利用者の選択設定は送らない。
-- 出力はJSON Schemaで検証した後、項目IDのマスタ照合・statusとsourceの組・価格・料理名キーを検証する。
-  同じ料理・項目に複数の根拠があれば優先順の最も高い1つだけを残す。AIの自己申告の確信度は扱わない。
+- 出力の構造・項目ID・価格・料理名を検証し、候補の組み合わせ不整合と空の根拠だけを不明に復旧する。
+  正規化後に組を厳密に検証し、同じ料理・項目に有効な根拠があれば優先順の最も高い1つを残す。
 - 0料理は422 `unreadable_menu`、不正な出力は502 `invalid_ai_output`、45秒で504 `timeout`、
   Geminiの利用不能は503。自動では再送しない。画像・出力本文・キーはログに残さない。
 """
@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import unicodedata
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
@@ -26,32 +27,23 @@ from jsonschema import Draft202012Validator
 from app.config import API_DIR, Settings, get_settings
 from app.errors import ApiError
 from app.services.assessment import AiCandidate
+from app.services.ai_classification import (
+    ALLERGEN_STATUS_BY_SOURCE,
+    DIETARY_STATUS_BY_SOURCE,
+    SOURCE_PRIORITY,
+    validate_ai_classification,
+)
 from app.services.images import SanitizedImage
 
 logger = logging.getLogger("app.menu_analysis")
 
-PROMPT_VERSION = "v4"
+PROMPT_VERSION = "v5"
 GEMINI_MODEL = "gemini-3.8-flash"
 GEMINI_THINKING_LEVEL = "LOW"  # MINIMAL はこのモデルでは400
 AI_TIMEOUT_SECONDS = 45.0
 PROMPT_PATH = API_DIR / "prompts" / "menu_analysis.md"
 SCHEMA_PATH = API_DIR / "contracts" / "menu_analysis.schema.json"
 MAX_PRICE = 99_999_999.99
-
-# 根拠の優先順（小さいほど優先）とstatusの対応（docs/api.md「AIの候補」）
-SOURCE_PRIORITY = {"menu_text": 0, "recipe_inference": 1, "dish_name_inference": 2, "unavailable": 3}
-ALLERGEN_STATUS_BY_SOURCE = {
-    "menu_text": "explicit_present",
-    "recipe_inference": "possible",
-    "dish_name_inference": "possible",
-    "unavailable": "unknown",
-}
-DIETARY_STATUS_BY_SOURCE = {
-    "menu_text": "explicit_conflict",
-    "recipe_inference": "possible_conflict",
-    "dish_name_inference": "possible_conflict",
-    "unavailable": "unknown",
-}
 
 
 @dataclass(frozen=True)
@@ -153,10 +145,17 @@ def parse_analysis(
     dishes = raw["dishes"]
     if not dishes:
         raise ApiError(422, "unreadable_menu")
-    return [_parse_dish(dish, allergen_ids, dietary_restriction_ids) for dish in dishes]
+    recoveries: Counter[str] = Counter()
+    results = [_parse_dish(dish, allergen_ids, dietary_restriction_ids, recoveries) for dish in dishes]
+    # 復旧理由と総件数のみ。料理・項目ID・根拠・利用者の設定は記録しない。
+    for reason, count in sorted(recoveries.items()):
+        logger.warning("ai_candidate_recovered reason=%s count=%d", reason, count)
+    return results
 
 
-def _parse_dish(dish: dict, allergen_ids: set[int], dietary_restriction_ids: set[int]) -> AnalyzedDish:
+def _parse_dish(
+    dish: dict, allergen_ids: set[int], dietary_restriction_ids: set[int], recoveries: Counter[str]
+) -> AnalyzedDish:
     name = dish["name"].strip()
     name_key = make_name_key(name)
     translation = dish["translations"]["en"]
@@ -183,25 +182,35 @@ def _parse_dish(dish: dict, allergen_ids: set[int], dietary_restriction_ids: set
         price=price,
         currency=currency,
         ingredients=[item.strip() for item in dish["ingredients"] if item.strip()],
-        allergens=_candidates(dish["allergens"], "allergen_id", allergen_ids, ALLERGEN_STATUS_BY_SOURCE),
+        allergens=_candidates(dish["allergens"], "allergen_id", allergen_ids, ALLERGEN_STATUS_BY_SOURCE, recoveries),
         dietary_restrictions=_candidates(
-            dish["dietary_restrictions"], "dietary_restriction_id", dietary_restriction_ids, DIETARY_STATUS_BY_SOURCE
+            dish["dietary_restrictions"], "dietary_restriction_id", dietary_restriction_ids,
+            DIETARY_STATUS_BY_SOURCE, recoveries,
         ),
     )
 
 
 def _candidates(
-    items: list[dict], id_key: str, known_ids: set[int], status_by_source: dict[str, str]
+    items: list[dict], id_key: str, known_ids: set[int], status_by_source: dict[str, str], recoveries: Counter[str]
 ) -> dict[int, AiCandidate]:
     chosen: dict[int, AiCandidate] = {}
     for item in items:
         item_id, status, source = int(item[id_key]), item["status"], item["source"]
         evidence = item["evidence"].strip()
-        if item_id not in known_ids or status_by_source[source] != status:
+        if item_id not in known_ids:
             raise invalid_output()
-        if source != "unavailable" and not evidence:
-            # 記載の原文・推定理由のない候補は表示できない
-            raise invalid_output()
+        reason = None
+        if status_by_source[source] != status:
+            reason = "status_source_mismatch"
+        elif source != "unavailable" and not evidence:
+            reason = "empty_evidence"
+        if reason:
+            recoveries[reason] += 1
+            status, source = "unknown", "unavailable"
+        if source == "unavailable":
+            evidence = ""
+        # 型・列挙値は入力Schemaで検証済み。不明への復旧後も正しい組だけを保存する。
+        validate_ai_classification(status, source, evidence, status_by_source)
         candidate = AiCandidate(status=status, source=source, evidence=evidence)
         kept = chosen.get(item_id)
         if kept is None or SOURCE_PRIORITY[source] < SOURCE_PRIORITY[kept.source]:

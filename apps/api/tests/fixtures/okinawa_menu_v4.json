@@ -1,0 +1,588 @@
+{
+  "dishes": [
+    {
+      "name": "沖縄そば",
+      "translations": {
+        "en": {
+          "name": "Okinawa Soba",
+          "description": "Traditional Okinawan noodle soup with wheat noodles in a broth typically made from pork bones and bonito flakes."
+        }
+      },
+      "price": 800,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 23,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "豚骨"
+        },
+        {
+          "allergen_id": 3,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Okinawa soba noodles are typically made with wheat flour."
+        },
+        {
+          "allergen_id": 9,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Broth or toppings often use soy sauce."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚骨と鰹出汁"
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚骨と鰹出汁"
+        },
+        {
+          "dietary_restriction_id": 3,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚骨"
+        }
+      ]
+    },
+    {
+      "name": "ソーキそば",
+      "translations": {
+        "en": {
+          "name": "Soki Soba",
+          "description": "Okinawa noodle soup topped with simmered bone-in pork spare ribs."
+        }
+      },
+      "price": 950,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 23,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "骨付き豚あばら肉"
+        },
+        {
+          "allergen_id": 3,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Okinawa soba noodles are made from wheat flour."
+        },
+        {
+          "allergen_id": 9,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Broth and simmered pork seasoning typically contain soy sauce."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "骨付き豚あばら肉"
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "骨付き豚あばら肉"
+        },
+        {
+          "dietary_restriction_id": 3,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "骨付き豚あばら肉"
+        },
+        {
+          "dietary_restriction_id": 4,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Simmered spare ribs (soki) typically use cooking sake or awamori."
+        }
+      ]
+    },
+    {
+      "name": "ゴーヤーチャンプルー定食",
+      "translations": {
+        "en": {
+          "name": "Goya Champuru Set Meal",
+          "description": "Stir-fry dish of bitter melon, pork, egg, and tofu, served as a set meal with rice, soup, and a side dish."
+        }
+      },
+      "price": 1100,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 23,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "豚肉"
+        },
+        {
+          "allergen_id": 9,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Goya champuru typically uses tofu and soy sauce."
+        },
+        {
+          "allergen_id": 1,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Goya champuru recipes typically include scrambled egg."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚肉"
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚肉"
+        },
+        {
+          "dietary_restriction_id": 3,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚肉"
+        }
+      ]
+    },
+    {
+      "name": "タコライス",
+      "translations": {
+        "en": {
+          "name": "Taco Rice",
+          "description": "Okinawan dish featuring seasoned taco-flavored minced meat and cheese over rice with fresh lettuce."
+        }
+      },
+      "price": 900,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 2,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "チーズ"
+        },
+        {
+          "allergen_id": 18,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Taco meat typically contains ground beef."
+        },
+        {
+          "allergen_id": 23,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Taco meat may contain ground pork."
+        },
+        {
+          "allergen_id": 9,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Taco seasoning or sauce often contains soy products."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "チーズ"
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "possible_conflict",
+          "source": "dish_name_inference",
+          "evidence": "Taco meat contains animal meat."
+        },
+        {
+          "dietary_restriction_id": 3,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Taco meat is made from animal meat of unspecified preparation or pork."
+        }
+      ]
+    },
+    {
+      "name": "ポーク玉子定食",
+      "translations": {
+        "en": {
+          "name": "Pork and Egg Set Meal",
+          "description": "Popular Okinawan home-style meal featuring luncheon meat (Spam) and a soft-cooked omelet/egg."
+        }
+      },
+      "price": 850,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 1,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "卵焼き"
+        },
+        {
+          "allergen_id": 23,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Spam / luncheon meat is made from pork."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "卵焼き"
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Spam is made of meat (pork)."
+        },
+        {
+          "dietary_restriction_id": 3,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Spam is made of pork."
+        }
+      ]
+    },
+    {
+      "name": "ラフテー",
+      "translations": {
+        "en": {
+          "name": "Rafute",
+          "description": "Traditional Okinawan braised pork belly simmered slowly with awamori (Okinawan liquor), soy sauce, and sugar."
+        }
+      },
+      "price": 780,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 23,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "豚の三枚肉"
+        },
+        {
+          "allergen_id": 9,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "醤油"
+        },
+        {
+          "allergen_id": 3,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Soy sauce typically contains wheat."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚の三枚肉"
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚の三枚肉"
+        },
+        {
+          "dietary_restriction_id": 3,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚の三枚肉"
+        },
+        {
+          "dietary_restriction_id": 4,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "泡盛"
+        }
+      ]
+    },
+    {
+      "name": "海ぶどう",
+      "translations": {
+        "en": {
+          "name": "Umi-budo (Sea Grapes)",
+          "description": "Fresh green sea grape seaweed, known for its popping texture, often served with dipping sauce."
+        }
+      },
+      "price": 550,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 9,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Dipping sauce served with sea grapes often contains soy sauce."
+        },
+        {
+          "allergen_id": 3,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Dipping sauce often contains soy sauce brewed with wheat."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Dipping sauce (sanbaizu or ponzu) may contain fish dashi."
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Dipping sauce may contain fish dashi."
+        },
+        {
+          "dietary_restriction_id": 4,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Dipping sauce may contain mirin or sake."
+        }
+      ]
+    },
+    {
+      "name": "島らっきょうの塩漬け",
+      "translations": {
+        "en": {
+          "name": "Salt-pickled Shima Rakkyo",
+          "description": "Okinawan island shallots lightly pickled in salt, characterized by a crisp bite and aromatic flavor."
+        }
+      },
+      "price": 500,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Salt-pickled shallots are often garnished with bonito flakes (katsuobushi)."
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Salt-pickled shallots are often garnished with bonito flakes (katsuobushi)."
+        }
+      ]
+    },
+    {
+      "name": "島らっきょうの天ぷら",
+      "translations": {
+        "en": {
+          "name": "Shima Rakkyo Tempura",
+          "description": "Crisp-fried Okinawan island shallot tempura."
+        }
+      },
+      "price": 650,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 3,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Tempura batter is typically made with wheat flour."
+        },
+        {
+          "allergen_id": 1,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Tempura batter often includes egg."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Tempura batter may contain egg, or dipping sauce may contain fish dashi."
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Tempura dipping sauce (tentsuyu) typically contains fish dashi."
+        },
+        {
+          "dietary_restriction_id": 4,
+          "status": "possible_conflict",
+          "source": "recipe_inference",
+          "evidence": "Dipping sauce often contains mirin."
+        }
+      ]
+    },
+    {
+      "name": "ミミガー（豚耳のピーナッツ和え）",
+      "translations": {
+        "en": {
+          "name": "Mimiga (Pig's Ear with Peanut Dressing)",
+          "description": "Thinly sliced crunchy pig's ears tossed in a savory peanut dressing."
+        }
+      },
+      "price": 450,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 23,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "豚耳"
+        },
+        {
+          "allergen_id": 7,
+          "status": "explicit_present",
+          "source": "menu_text",
+          "evidence": "ピーナッツ"
+        },
+        {
+          "allergen_id": 9,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Peanut dressing recipes usually incorporate soy sauce."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 1,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚耳"
+        },
+        {
+          "dietary_restriction_id": 2,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚耳"
+        },
+        {
+          "dietary_restriction_id": 3,
+          "status": "explicit_conflict",
+          "source": "menu_text",
+          "evidence": "豚耳"
+        }
+      ]
+    },
+    {
+      "name": "オリオン生ビール",
+      "translations": {
+        "en": {
+          "name": "Orion Draft Beer",
+          "description": "Okinawa's popular draft lager beer."
+        }
+      },
+      "price": 600,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [
+        {
+          "allergen_id": 3,
+          "status": "possible",
+          "source": "recipe_inference",
+          "evidence": "Beer typically contains barley or wheat."
+        }
+      ],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 3,
+          "status": "explicit_conflict",
+          "source": "dish_name_inference",
+          "evidence": "Beer contains alcohol."
+        },
+        {
+          "dietary_restriction_id": 4,
+          "status": "explicit_conflict",
+          "source": "dish_name_inference",
+          "evidence": "Beer contains alcohol."
+        }
+      ]
+    },
+    {
+      "name": "泡盛（グラス）",
+      "translations": {
+        "en": {
+          "name": "Awamori (Glass)",
+          "description": "Okinawan distilled rice spirit, served in a glass (with water, rocks, or straight)."
+        }
+      },
+      "price": 500,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [],
+      "dietary_restrictions": [
+        {
+          "dietary_restriction_id": 3,
+          "status": "explicit_conflict",
+          "source": "dish_name_inference",
+          "evidence": "Awamori is a distilled alcoholic spirit."
+        },
+        {
+          "dietary_restriction_id": 4,
+          "status": "explicit_conflict",
+          "source": "dish_name_inference",
+          "evidence": "Awamori is an alcoholic beverage."
+        }
+      ]
+    },
+    {
+      "name": "さんぴん茶",
+      "translations": {
+        "en": {
+          "name": "Sanpin Tea",
+          "description": "Okinawan jasmine tea, known for its refreshing floral scent."
+        }
+      },
+      "price": 300,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [],
+      "dietary_restrictions": []
+    },
+    {
+      "name": "シークヮーサージュース",
+      "translations": {
+        "en": {
+          "name": "Shikuwasa Juice",
+          "description": "Refreshing citrus juice made from Okinawan flat lemons (shikuwasa)."
+        }
+      },
+      "price": 400,
+      "currency": "JPY",
+      "ingredients": [],
+      "allergens": [],
+      "dietary_restrictions": []
+    }
+  ]
+}

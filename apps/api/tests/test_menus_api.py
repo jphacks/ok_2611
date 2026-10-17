@@ -241,17 +241,17 @@ def test_analyze_guest_without_store(client, analyzer, store, google):
     saved = store.saved[body["menu_id"]]
     assert saved["token_hash"] == hashlib.sha256(token.encode()).hexdigest()
     assert saved["account_id"] is None and saved["restaurant_id"] is None
-    assert saved["prompt_version"] == "v4" and saved["ai_model"] == "gemini-test"
+    assert saved["prompt_version"] == "v5" and saved["ai_model"] == "gemini-test"
     assert google.calls == 0  # 店舗未選択ではGoogleを呼ばない
     assert body["google_place_id"] is None
-    assert body["prompt_version"] == "v4" and body["locale"] == "en"
+    assert body["prompt_version"] == "v5" and body["locale"] == "en"
     assert body["analyzed_at"].endswith("Z") and body["analysis_expires_at"].endswith("Z")
     assert "image_path" not in response.text and next(iter(store.uploaded)) not in response.text
 
     first, second = body["dishes"]
     assert (first["name"], first["display_name"], first["dish_version"]) == ("海老天そば", "海老天そば (en)", 1)
-    # 対象省略時：AIが候補に挙げたアレルゲン（unknown 以外）をマスタの表示順（そば4番目・えび6番目）で
-    assert [a["allergen_id"] for a in first["allergens"]] == [6, 4]
+    # 対象省略時：AIが明示したアレルゲン（unknown も含む）をマスタの表示順（乳2番目・そば4番目・えび6番目）で
+    assert [a["allergen_id"] for a in first["allergens"]] == [2, 6, 4]
     shrimp = by_id(first["allergens"], "allergen_id")[4]
     assert shrimp == {
         "allergen_id": 4,
@@ -292,6 +292,68 @@ def test_selected_ids_are_not_sent_to_gemini_or_saved(client, analyzer, store):
     assert diets[1]["ai"]["status"] == "unknown"
     assert diets[4]["ai"] == {"status": "possible_conflict", "source": "recipe_inference", "evidence": "Mirin.", "weight": None}
     assert set(diets[4]["notices"]) == {"ai_staff_mismatch", "recheck_current_answer", "history_conflict", "history_cross_contact"}
+
+
+def test_recorded_menu_returns_201_and_can_be_read_again(client, analyzer, store, okinawa_output):
+    from tests.test_openapi_contract import response_schema, validate
+
+    analyzer.output = okinawa_output
+    response = analyze(client, {"dietary_restriction_ids": ["1", "2", "3", "4"]})
+    assert response.status_code == 201, response.text
+    body = response.json()
+    validate(body, response_schema("/menus/analyze", "post", "201"))
+    assert len(body["dishes"]) == 14
+    assert [(d["name"], d["price"]) for d in body["dishes"]] == [
+        (d["name"], d["price"]) for d in okinawa_output["dishes"]
+    ]
+    for index in (10, 11):
+        diets = by_id(body["dishes"][index]["dietary_restrictions"], "dietary_restriction_id")
+        for item_id in (3, 4):
+            item = diets[item_id]
+            assert item["ai"] == {"status": "unknown", "source": "unavailable", "evidence": "", "weight": None}
+            assert item["current_answer"] is None and item["store_history"] is None
+            assert not any(item["notices"].values())
+    fetched = client.get(f"/api/v1/menus/{body['menu_id']}?dietary_restriction_ids=1,2,3,4",
+                         headers={"Authorization": f"Bearer {body['analysis_token']}"})
+    assert fetched.status_code == 200
+    validate(fetched.json(), response_schema("/menus/{menu_id}", "get", "200"))
+    assert fetched.json()["dishes"] == body["dishes"]
+    assert len(analyzer.calls) == 1
+    saved = [d.ai_result() for d in store.saved[body["menu_id"]]["dishes"]]
+    assert sum(c["status"] == "unknown" for d in saved for c in d["dietary_restrictions"]) == 4
+
+
+@pytest.mark.parametrize("selected", [False, True])
+def test_all_unknown_is_success_and_explicit_unknown_stays_visible(client, analyzer, selected):
+    analyzer.output = {"dishes": [ai_dish("読める料理", [
+        {**SHRIMP_EXPLICIT, "source": "recipe_inference"}
+    ], [{**SAKE_POSSIBLE, "evidence": "  "}])]}
+    fields = {"dietary_restriction_ids": ["4"]}
+    if selected:
+        fields["allergen_ids"] = ["4", "1"]
+    response = analyze(client, fields)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    first = body["dishes"][0]
+    assert [a["allergen_id"] for a in first["allergens"]] == ([1, 4] if selected else [4])
+    for item in first["allergens"] + first["dietary_restrictions"]:
+        assert item["ai"] == {"status": "unknown", "source": "unavailable", "evidence": "", "weight": None}
+        assert item["current_answer"] is None and item["store_history"] is None
+    fetched = client.get(f"/api/v1/menus/{body['menu_id']}", headers={"Authorization": f"Bearer {body['analysis_token']}"})
+    assert fetched.status_code == 200
+    assert [a["allergen_id"] for a in fetched.json()["dishes"][0]["allergens"]] == [4]
+    assert fetched.json()["dishes"][0]["dietary_restrictions"] == []
+
+
+def test_invalid_saved_classification_is_not_returned_or_logged(client, store, caplog):
+    body = analyze(client).json()
+    candidate = store.dishes[body["menu_id"]][0].ai_result["allergens"][1]
+    candidate.update(status="explicit_present", source="recipe_inference", evidence="private-invalid-evidence")
+    response = client.get(f"/api/v1/menus/{body['menu_id']}", headers={"Authorization": f"Bearer {body['analysis_token']}"})
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert "private-invalid-evidence" not in response.text + caplog.text
+    assert body["analysis_token"] not in response.text + caplog.text
 
 
 def test_analyze_with_store_uses_history(client, store, google):

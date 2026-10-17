@@ -17,9 +17,10 @@ security: []
 x-source: ../docs/api.md
 x-specification-notes:
   - レスポンス例のフィールドは原則requiredとした。price・店舗未選択のgoogle_place_id・current_answer・store_history・score・weight・next_cursorはnullを許可。例だけの項目の省略可否は未指定。
-  - 不明AIのevidenceは型・空値が明記されていない。全AI variantで文字列（空文字可）として暫定定義し、null・欠落は許可しない。
+  - AIのevidenceは文字列必須。新規解析のunknownは空文字へ正規化し、既存v4のunknownに根拠文字列が残る場合も読取可能。不明以外は空・空白だけの根拠を許可しない。
+  - 新規解析はプロンプトv5。既存メニューの読取は保存されたv4も許可し、そのバージョンを返す。
   - 料理名200文字、Place ID255文字、priceの範囲・桁、currencyの3文字は、APIから参照するDB仕様で補足した。
-  - API 6のlocaleは共通の既定enに従い任意と解釈した。GETでのallergen_ids省略時の対象と空クエリ文字列の扱いは詳細に未指定。
+  - API 6のlocaleは共通の既定enに従い任意。GETでallergen_idsを省略するとAIが明示した候補をunknownも含めて返す。空クエリ文字列は422。
   - API 9のパスワード長、cursorの書式・最大長、公開集計の料理数上限・ページングは未指定。値・上限・追加パラメータを創作していない。
   - エラーcode一覧は主な値であり網羅enumとは書かれていない。文字列とsnake_caseパターン・列挙済みexamplesで定義した。共通SQLSTATE変換に基づく404と共通入力検証422を該当操作に含めた。
   - 画素数超過時のHTTPコード、画像破損と非対応形式の区別は未指定。画像のバイト数・画素数を拡張属性と説明で記録し、サーバーでの検証を必須とした。
@@ -363,7 +364,7 @@ paths:
                 analysis_token: <解析用トークン（この応答でだけ返す）>
                 analysis_expires_at: '2026-10-18T03:00:00Z'
                 ai_model: gemini-3.8-flash
-                prompt_version: v4
+                prompt_version: v5
                 analyzed_at: '2026-10-17T03:00:00Z'
                 locale: en
                 dishes:
@@ -1412,7 +1413,7 @@ components:
       name: allergen_ids
       in: query
       required: false
-      description: "カンマ区切り（例: allergen_ids=4,6）。multipartの繰り返しフィールドとは異なる。判定の対象選択にだけ使い、保存しない。"
+      description: "カンマ区切り（例: allergen_ids=4,6）。multipartの繰り返しフィールドとは異なる。判定の対象選択にだけ使い、保存しない。省略時はAIが明示した候補をunknownも含めて返す。"
       schema:
         $ref: "#/components/schemas/allergen_ids"
       style: form
@@ -2004,7 +2005,7 @@ components:
         - $ref: "#/components/schemas/allergen_ai_explicit"
         - $ref: "#/components/schemas/allergen_ai_inferred"
         - $ref: "#/components/schemas/allergen_ai_unknown"
-      description: 根拠は明記→記載された原材料・説明→料理名の優先順で1つにする。AIは交差接触、不使用、対応可を確定しない。
+      description: 根拠はメニュー記載→一般レシピ推定→料理名推定→不明の優先順で1つにする。構造とIDが有効な候補の組み合わせ矛盾・空の根拠は項目単位でunknown／unavailable／空のevidenceへ正規化する。AIは交差接触、不使用、対応可を確定しない。
     dietary_ai_explicit:
       type: object
       additionalProperties: false
@@ -2089,7 +2090,7 @@ components:
         - $ref: "#/components/schemas/dietary_ai_explicit"
         - $ref: "#/components/schemas/dietary_ai_inferred"
         - $ref: "#/components/schemas/dietary_ai_unknown"
-      description: 根拠は明記→記載された原材料・説明→料理名の優先順で1つにする。AIは交差接触、不使用、対応可を確定しない。
+      description: 根拠はメニュー記載→一般レシピ推定→料理名推定→不明の優先順で1つにする。構造とIDが有効な候補の組み合わせ矛盾・空の根拠は項目単位でunknown／unavailable／空のevidenceへ正規化する。AIは交差接触、不使用、対応可を確定しない。
     allergen_answer:
       type: string
       enum:
@@ -2861,7 +2862,7 @@ components:
           $ref: "#/components/schemas/google_place_id"
         allergen_ids:
           $ref: "#/components/schemas/allergen_ids"
-          description: 同名のmultipartフィールドを繰り返す。省略時はAIの候補を判定の対象にする。カンマ区切りやJSON文字列ではない。
+          description: 同名のmultipartフィールドを繰り返す。省略時はAIが明示した候補（unknownへ正規化した項目を含む）を判定の対象にする。カンマ区切りやJSON文字列ではない。
         dietary_restriction_ids:
           $ref: "#/components/schemas/dietary_restriction_ids"
           description: 同名のmultipartフィールドを繰り返す。省略時は食事制限の判定なし。
@@ -2896,6 +2897,7 @@ components:
           type: string
           enum:
             - v4
+            - v5
         analyzed_at:
           $ref: "#/components/schemas/utc_datetime"
         locale:
@@ -2939,6 +2941,7 @@ components:
           type: string
           enum:
             - v4
+            - v5
         analyzed_at:
           $ref: "#/components/schemas/utc_datetime"
         locale:
@@ -3417,6 +3420,7 @@ components:
           type: string
           enum:
             - v4
+            - v5
         analyzed_at:
           $ref: "#/components/schemas/utc_datetime"
         locale:
