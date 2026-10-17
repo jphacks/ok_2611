@@ -279,7 +279,7 @@ paths:
       operationId: get_nearby_places
       summary: 周辺の飲食店検索
       description: Places API（New）のNearby
-        Searchをサーバー用キーで呼び、飲食店に絞って最大20件を距離順で返す。公開メニュー件数を付与する。店名・座標・住所は保存せず、現在地をログに残さない。IP単位30回/分（初期案）。
+        Searchをサーバー用キーで呼び、飲食店に絞って最大20件を距離順で返す。公開料理数（API 7で表示される料理数＝店舗ごとの異なるname_keyの数）を付与する。店名・座標・住所は保存せず、現在地をログに残さない。IP単位30回/分（初期案）。
       tags:
         - P0
       x-api-number: 3
@@ -308,6 +308,9 @@ paths:
                     has_public_menus: true
                     public_menu_count: 2
                 attribution: Google Maps
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
         "422":
           $ref: "#/components/responses/validation_error"
         "429":
@@ -1319,7 +1322,7 @@ components:
         default: 300
   headers:
     no_store:
-      description: 解析・確認・アカウント・本人履歴・公開集計はキャッシュしない。
+      description: 解析・確認・アカウント・本人履歴・公開集計・周辺検索はキャッシュしない。
       required: true
       schema:
         type: string
@@ -1721,15 +1724,17 @@ components:
         address:
           type: string
         distance_m:
-          type: number
+          type: integer
           minimum: 0
-          description: 現在地からの距離（m）。整数への丸め規則は未指定。
+          description: 現在地（lat・lng）から店舗の座標までの大圏距離（m）。APIが計算し、整数に四捨五入する。
         has_public_menus:
           type: boolean
+          description: public_menu_countが1以上のときtrue。
         public_menu_count:
           type: integer
           minimum: 0
-      description: 店名・座標・住所はGoogleから都度取得しDBに保存しない。公開件数には非公開のメニューを含めない。
+          description: その店舗でAPI 7に表示される料理の数。published_menusに含まれる、店舗ごとの異なるname_keyの数で、メニュー（撮影した画像）の数ではない。同じ料理が複数のメニュー・利用者で公開されても1件と数える。
+      description: 店名・座標・住所はGoogleから都度取得しDBに保存しない。公開料理数には非公開のメニューの料理を含めない。
     nearby_places_response:
       type: object
       additionalProperties: false
@@ -1742,7 +1747,7 @@ components:
           items:
             $ref: "#/components/schemas/nearby_place"
           minItems: 0
-          description: 距離の昇順。
+          description: distance_mの昇順。同じ距離はgoogle_place_idの昇順。同じPlace IDは1件だけ返す。
           maxItems: 20
         attribution:
           type: string

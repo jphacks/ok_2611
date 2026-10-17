@@ -85,7 +85,7 @@
 - Vercel Functionsのリクエスト・レスポンス本文上限4.5MBに収める。画像の2 MiB上限に加え、multipartの付加情報も含めて確認する。[Vercelの制限](https://vercel.com/docs/functions/limitations)
 - レート制限は複数インスタンスで共有できる保存先を使う。プロセス内カウンターだけには依存しない。
 - 解析POSTは自動再送しない。確認保存で結果が不明な場合は、同じ内容・`request_id` で再送する。
-- 画像・Authorization・トークン・座標・メール・パスワード・個人の設定をログに残さない。解析・確認・アカウント・公開集計のレスポンスは `Cache-Control: no-store`。
+- 画像・Authorization・トークン・座標・メール・パスワード・個人の設定をログに残さない。解析・確認・アカウント・公開集計・周辺検索のレスポンスは `Cache-Control: no-store`。
 - Supabaseは `Meelyze-plus`（Project Ref `pqegjvcyfnmqpmwxaogp`、`ap-southeast-1`）を**本番兼用**で使う。DB変更は [Supabase README の適用手順](../supabase/README.md#適用手順クラウド) に従い、対象と差分を提示して承認を得てから `db push` する。データを書き込む試験はこのプロジェクトで行わず、ローカル（`supabase start`）か使い捨てのプロジェクトで行う。
 
 ## 検証
