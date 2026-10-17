@@ -55,6 +55,25 @@ Meelyze+ のAPIサーバー。FastAPIで `/api/v1` を提供し、Supabase（Pos
 | `AI_PRIOR_WEIGHT_EXPLICIT` / `AI_PRIOR_WEIGHT_POSSIBLE` / `STORE_ANSWER_HALF_LIFE_DAYS` | 予測の設定（仮設定） |
 | `AUTH_JWT_SECRET` / `ACCOUNT_TOKEN_TTL_HOURS` | アカウント用トークン（P1） |
 
+## DBエラーの変換
+
+Supabaseクライアント経由のRPC・テーブル操作のエラーは、PostgRESTが付けたHTTPステータスで判定しない。PostgRESTのステータスは [API仕様](../../docs/api.md#エラー) と一致しない（ローカル環境で、存在しないメニューの `P0002` が500で返ることを確認済み）。レスポンス本文の `code`（SQLSTATE）と `message` で判定し、APIのステータスとエラーコードへ変換する。
+
+| `code`（SQLSTATE） | DBの `message` | APIの応答 |
+|---|---|---|
+| `28000` | `invalid_analysis_token` | 401 `invalid_analysis_token` |
+| `P0002` | `menu_not_found`、`account_not_found`（P1） | 404 `not_found` |
+| `P0003` | `analysis_expired` | 410 `analysis_expired` |
+| `40001` | `request_id_conflict` | 409 `request_id_conflict` |
+| `22023` | `answers_invalid`、`dish_not_in_menu`、`confirmation_limit_reached`、`invalid_allergen_ids`、`invalid_dietary_restriction_ids`、`validation_error` | 422。`code` はDBの `message` をそのまま使う |
+| `23505` | `accounts.email` の一意制約違反（P1） | 409 `email_already_registered` |
+| 上記以外 | その他の制約違反など | 内容に応じて422か409。想定外は500 |
+
+- `22023` で表にない `message`（例：トリガーの `restaurant_mismatch`・`dish_version_mismatch`、解析保存の `dishes_invalid`・`invalid_analysis_token_hash`）は422 `validation_error` にする。これらはAPI側の入力検証で先に防ぐべきものなので、発生しないことをテストで確認する。
+- クライアントへはAPI仕様の形式（`{"error": {"code", "message"}}`）で返す。SQLの `message`・`details`・`hint` やPostgRESTの本文をそのまま返さない。ログにもトークン・画像パスなどを含めない。
+- `complete_confirmation_session` の成功時は、`replayed=false` を201、`replayed=true` を200で返す。RPCの戻り値に `is_public` は含まれないため、`menus.user_publish_consent`・`restaurant_id` と今回の `publish_consent` から算出する。
+- 各RPCの引数・戻り値・SQLSTATEの一覧は [Supabase README](../../supabase/README.md#rpcの契約p0) を参照する。
+
 ## コマンド
 
 このディレクトリで実行する。
