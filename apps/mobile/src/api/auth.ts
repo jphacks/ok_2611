@@ -19,6 +19,27 @@ export type RegisterRequest = {
   publish_consent: boolean;
 };
 
+export type AccountDetails = { nickname: string; email: string; preview: boolean };
+const accountDetailsKey = "meelyze.account_details";
+
+export function saveAccountDetails(details: AccountDetails): void {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(accountDetailsKey, JSON.stringify(details));
+}
+
+export function getAccountDetails(): AccountDetails | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value: unknown = JSON.parse(window.sessionStorage.getItem(accountDetailsKey) || "null");
+    if (!value || typeof value !== "object") return null;
+    const details = value as Partial<AccountDetails>;
+    return typeof details.nickname === "string" && typeof details.email === "string" &&
+      typeof details.preview === "boolean" ? details as AccountDetails : null;
+  } catch {
+    return null;
+  }
+}
+
 export const isRegisterApiConfigured = isEndpointConfigured("register");
 export const isLoginApiConfigured = isEndpointConfigured("login");
 
@@ -72,12 +93,17 @@ export function loginAccount(body: { email: string; password: string }): Promise
   return postAuth(apiEndpoints.login, body);
 }
 
-export function saveAccountToken(token: string): void {
+export function saveAccountToken(token: string, accountId?: string): void {
   if (typeof window !== "undefined") {
     window.sessionStorage.setItem("meelyze.account_token", token);
+    if (accountId) window.sessionStorage.setItem("meelyze.account_id", accountId);
   }
 }
 
 export function getAccountToken(): string | null {
   return typeof window === "undefined" ? null : window.sessionStorage.getItem("meelyze.account_token");
+}
+
+export function getAccountId(): string | null {
+  return typeof window === "undefined" ? null : window.sessionStorage.getItem("meelyze.account_id");
 }

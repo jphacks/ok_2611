@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { isAllergenSaveConfigured, saveAllergens } from "../../src/api/allergens";
 import { getAccountToken } from "../../src/api/auth";
 import { Page } from "../../src/components/Page";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { allergenOptions } from "../../src/content/preferences";
 import { saveSelectedAllergenIds } from "../../src/features/profile/selection";
+import { AllergenChoices } from "../../src/features/profile/AllergenChoices";
 import { colors } from "../../src/theme";
 
 export default function ProfileSetupScreen() {
@@ -77,13 +78,13 @@ export default function ProfileSetupScreen() {
     <Page title="Allergens">
       {created === "1" ? <Text style={styles.success}>Account created.</Text> : null}
 
-      <ChoiceSection
+      <AllergenChoices
         title="Allergens (Mandatory labeling, 9 items)"
         options={allergenOptions.filter((item) => item.category === "required")}
         selected={selectedAllergens}
         onToggle={toggleAllergen}
       />
-      <ChoiceSection
+      <AllergenChoices
         title="Allergens (Recommended labeling, 20 items)"
         options={allergenOptions.filter((item) => item.category === "recommended")}
         selected={selectedAllergens}
@@ -103,43 +104,7 @@ export default function ProfileSetupScreen() {
   );
 }
 
-function ChoiceSection({ title, options, selected, onToggle }: {
-  title: string;
-  options: Array<{ id: number; display_name: string }>;
-  selected: Set<number>;
-  onToggle: (id: number) => void;
-}) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.chips}>
-        {options.map((option) => {
-          const isSelected = selected.has(option.id);
-          return (
-            <Pressable
-              key={option.id}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: isSelected }}
-              onPress={() => onToggle(option.id)}
-              style={[styles.chip, isSelected && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>{option.display_name}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  section: { marginTop: 24 },
-  sectionTitle: { color: colors.ink, fontSize: 16, fontWeight: "800", marginBottom: 12 },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { minHeight: 37, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 19, borderWidth: 1, borderColor: colors.line, backgroundColor: "#F6F8F6", justifyContent: "center" },
-  chipSelected: { backgroundColor: colors.green, borderColor: colors.green },
-  chipText: { color: colors.ink, fontSize: 13, fontWeight: "600" },
-  chipTextSelected: { color: colors.white },
   error: { color: "#B42318", fontSize: 13, marginTop: 18 },
   success: { color: colors.greenDark, backgroundColor: colors.greenPale, padding: 12, borderRadius: 10, marginBottom: 14, fontWeight: "700" },
   actions: { marginTop: 26, gap: 11 },

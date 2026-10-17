@@ -1,29 +1,83 @@
 import { ApiError, getAccountToken } from "./auth";
 import { apiEndpoints, isEndpointConfigured } from "./endpoints";
 
-export type MenuAllergenPrediction = {
+export type MenuAllergen = {
   allergen_id: number;
   display_name: string;
-  prediction: { status: string; basis: string };
+  ai: {
+    status: "explicit_present" | "possible" | "unknown";
+    source: "menu_text" | "recipe_inference" | "dish_name_inference" | "unavailable";
+    evidence: string;
+    weight: number | null;
+  };
+  current_answer: {
+    answer: "contains" | "shared_utensils" | "does_not_contain" | "unknown";
+    confirmed_at: string;
+  } | null;
+  store_history: {
+    match_basis: "name_key";
+    last_confirmed_at: string;
+    answer_counts: { contains: number; shared_utensils: number; does_not_contain: number; unknown: number };
+    has_conflict: boolean;
+  } | null;
+  notices: {
+    ai_staff_mismatch: boolean;
+    recheck_current_answer: boolean;
+    history_conflict: boolean;
+    history_shared_utensils: boolean;
+  };
 };
 export type MenuDish = {
   dish_id: string;
+  dish_version: number;
   name: string;
   display_name: string;
-  description: string | null;
+  description: string;
   price: number | null;
-  currency: string | null;
-  allergens: MenuAllergenPrediction[];
+  currency: string;
+  allergens: MenuAllergen[];
+  dietary_restrictions: unknown[];
 };
-export type MenuAnalysis = {
+export type MenuResult = {
   menu_id: string;
   google_place_id: string | null;
-  analysis_token: string;
   analysis_expires_at: string;
+  ai_model: string;
+  prompt_version: "v4" | "v5";
+  analyzed_at: string;
+  locale: "en";
   dishes: MenuDish[];
 };
+export type MenuAnalysis = MenuResult & { analysis_token: string };
 
 export const isMenuAnalysisConfigured = isEndpointConfigured("analyzeMenu");
+
+export const isMenuResultConfigured = isEndpointConfigured("getMenu");
+
+export async function getMenuResult(menuId: string, analysisToken: string, allergenIds: number[]): Promise<MenuResult> {
+  const base = apiEndpoints.getMenu.trim();
+  if (!base) throw new ApiError(0, "api_not_configured", "The result API is not connected yet.");
+  const url = new URL(`${base.replace(/\/$/, "")}/${encodeURIComponent(menuId)}`);
+  url.searchParams.set("allergen_ids", allergenIds.join(","));
+  url.searchParams.set("locale", "en");
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { headers: { Authorization: `Bearer ${analysisToken}` }, cache: "no-store" });
+  } catch {
+    throw new ApiError(0, "network_error", "Could not refresh the menu result.");
+  }
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const apiError = payload && typeof payload === "object" && "error" in payload
+      ? (payload as { error?: { code?: string; message?: string } }).error : undefined;
+    throw new ApiError(response.status, apiError?.code ?? "request_failed", apiError?.message ?? "Could not refresh the menu result.");
+  }
+  const result = payload as MenuResult | null;
+  if (!result || result.menu_id !== menuId || !Array.isArray(result.dishes)) {
+    throw new ApiError(0, "invalid_response", "The refreshed menu result was incomplete.");
+  }
+  return result;
+}
 
 export async function analyzeMenu(image: File, allergenIds: number[], placeId?: string): Promise<MenuAnalysis> {
   const url = apiEndpoints.analyzeMenu.trim();

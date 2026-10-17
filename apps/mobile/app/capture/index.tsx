@@ -100,7 +100,7 @@ export default function CaptureScreen() {
           <Text style={styles.navIcon}>⌖</Text><Text style={styles.navText}>Map</Text>
         </Pressable>
         <View style={styles.tab}><Text style={styles.navIconSelected}>⌗</Text><Text style={styles.navSelected}>Scan</Text></View>
-        <View style={styles.tab}><Text style={styles.navIcon}>♟</Text><Text style={styles.navText}>Profile</Text></View>
+        <Pressable onPress={() => router.push("/profiles")} accessibilityRole="button" style={styles.tab}><Text style={styles.navIcon}>♟</Text><Text style={styles.navText}>Profile</Text></Pressable>
       </View>
       {createElement("input", {
         ref: fileRef,

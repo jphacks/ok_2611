@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { ApiError, isLoginApiConfigured, loginAccount, saveAccountToken } from "../src/api/auth";
+import { ApiError, isLoginApiConfigured, loginAccount, saveAccountDetails, saveAccountToken } from "../src/api/auth";
 import { FormField } from "../src/components/FormField";
 import { Page } from "../src/components/Page";
 import { PrimaryButton } from "../src/components/PrimaryButton";
@@ -26,7 +26,8 @@ export default function LoginScreen() {
     setSubmitting(true);
     try {
       const result = await loginAccount({ email: email.trim().toLowerCase(), password });
-      saveAccountToken(result.access_token);
+      saveAccountToken(result.access_token, result.account.id);
+      saveAccountDetails({ nickname: result.account.nickname, email: result.account.email, preview: false });
       router.replace("/profiles/setup");
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "rate_limited") {
