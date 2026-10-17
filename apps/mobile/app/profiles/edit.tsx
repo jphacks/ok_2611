@@ -70,8 +70,7 @@ export default function ProfileEditScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.phone}>
-        <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.title}>Edit allergens</Text>
         <Text style={styles.subtitle}>Select the ingredients you need to avoid.</Text>
         <AllergenChoices
@@ -86,25 +85,23 @@ export default function ProfileEditScreen() {
           selected={selected}
           onToggle={toggle}
         />
-        </ScrollView>
-        {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-        <Pressable accessibilityRole="button" disabled={checking} onPress={() => void save()} style={[styles.save, checking && styles.disabled]}>
-          <Text style={styles.saveText}>{checking ? "Checking…" : "Save changes"}</Text>
-        </Pressable>
-        <View style={styles.tabBar}>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/map")}><Text style={styles.tab}>⌖{"\n"}Map</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/capture")}><Text style={styles.tab}>▣{"\n"}Scan</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => router.replace("/profiles")}><Text style={[styles.tab, styles.activeTab]}>●{"\n"}Profile</Text></Pressable>
-        </View>
+      </ScrollView>
+      {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      <Pressable accessibilityRole="button" disabled={checking} onPress={() => void save()} style={[styles.save, checking && styles.disabled]}>
+        <Text style={styles.saveText}>{checking ? "Checking…" : "Save changes"}</Text>
+      </Pressable>
+      <View style={styles.tabBar}>
+        <Pressable accessibilityRole="button" onPress={() => router.push("/map")}><Text style={styles.tab}>⌖{"\n"}Map</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push("/capture")}><Text style={styles.tab}>▣{"\n"}Scan</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.replace("/profiles")}><Text style={[styles.tab, styles.activeTab]}>●{"\n"}Profile</Text></Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.white, alignItems: "center" },
-  phone: { width: "100%", maxWidth: 440, flex: 1 },
-  body: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 24 },
+  screen: { flex: 1, backgroundColor: colors.white },
+  body: { paddingTop: 24, paddingHorizontal: 20, paddingBottom: 24 },
   title: { color: colors.ink, fontSize: 27, fontWeight: "800" },
   subtitle: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 5 },
   error: { color: colors.error, fontSize: 13, marginBottom: 8, marginHorizontal: 20 },

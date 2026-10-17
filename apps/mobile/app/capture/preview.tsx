@@ -64,32 +64,30 @@ export default function CapturePreviewScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.canvas}>
-      <View style={styles.phone}>
-        <Text style={styles.title}>Analyze this photo?</Text>
-        <Text style={styles.subtitle}>{restaurantName || "No restaurant selected"} · Check the menu text is sharp and readable.</Text>
-        <View style={styles.photoFrame}>
-          <Image source={{ uri: image.url }} resizeMode="contain" style={styles.photo} accessibilityLabel="Photo of the menu to analyze" />
-        </View>
-        {!placeId ? <Text style={styles.note}>Previous staff answers are not used without a restaurant.</Text> : null}
-        {busy ? <Text accessibilityRole="alert" style={styles.progress}>Analyzing menu… This may take up to 45 seconds.</Text> : null}
-        {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-        <View style={styles.actions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: busy }}
-            disabled={busy}
-            onPress={() => { clearImage(); router.replace(captureRoute); }}
-            style={[styles.action, styles.retake, busy && styles.disabled]}
-          ><Text style={styles.retakeText}>↻ Retake</Text></Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: busy }}
-            disabled={busy}
-            onPress={() => { void analyze(); }}
-            style={[styles.action, styles.analyze, busy && styles.disabled]}
-          ><Text style={styles.analyzeText}>{busy ? "Analyzing…" : "✓ Analyze"}</Text></Pressable>
-        </View>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.pageContent}>
+      <Text style={styles.title}>Analyze this photo?</Text>
+      <Text style={styles.subtitle}>{restaurantName || "No restaurant selected"} · Check the menu text is sharp and readable.</Text>
+      <View style={styles.photoFrame}>
+        <Image source={{ uri: image.url }} resizeMode="contain" style={styles.photo} accessibilityLabel="Photo of the menu to analyze" />
+      </View>
+      {!placeId ? <Text style={styles.note}>Previous staff answers are not used without a restaurant.</Text> : null}
+      {busy ? <Text accessibilityRole="alert" style={styles.progress}>Analyzing menu… This may take up to 45 seconds.</Text> : null}
+      {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
+          disabled={busy}
+          onPress={() => { clearImage(); router.replace(captureRoute); }}
+          style={[styles.action, styles.retake, busy && styles.disabled]}
+        ><Text style={styles.retakeText}>↻ Retake</Text></Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
+          disabled={busy}
+          onPress={() => { void analyze(); }}
+          style={[styles.action, styles.analyze, busy && styles.disabled]}
+        ><Text style={styles.analyzeText}>{busy ? "Analyzing…" : "✓ Analyze"}</Text></Pressable>
       </View>
     </ScrollView>
   );
@@ -97,8 +95,7 @@ export default function CapturePreviewScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.white },
-  canvas: { flexGrow: 1, alignItems: "center" },
-  phone: { width: "100%", maxWidth: 440, flexGrow: 1, paddingHorizontal: 24, paddingTop: 52, paddingBottom: 28 },
+  pageContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 28 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800", lineHeight: 34 },
   subtitle: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8, marginBottom: 20 },
   photoFrame: { width: "100%", aspectRatio: 0.72, maxHeight: 590, borderRadius: 16, overflow: "hidden", backgroundColor: "#17231F", justifyContent: "center" },

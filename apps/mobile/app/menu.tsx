@@ -119,57 +119,55 @@ export default function MenuScreen() {
   };
   return (
     <>
-    <ScrollView style={styles.screen} contentContainerStyle={styles.canvas}>
-      <View style={styles.phone}>
-        <View style={styles.heading}>
-          <View style={styles.headingCopy}>
-            <Text style={styles.title}>Analysis complete</Text>
-            <Text style={styles.subtitle}>{demoMode ? "Okinawa menu · Wheat + Pork" : "Menu analysis"}</Text>
-          </View>
-          <Pressable accessibilityRole="button" style={styles.retake} onPress={() => router.push("/capture")}>
-            <Text style={styles.retakeText}>↻ Retake</Text>
-          </Pressable>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.pageContent}>
+      <View style={styles.heading}>
+        <View style={styles.headingCopy}>
+          <Text style={styles.title}>Analysis complete</Text>
+          <Text style={styles.subtitle}>{demoMode ? "Okinawa menu · Wheat + Pork" : "Menu analysis"}</Text>
         </View>
+        <Pressable accessibilityRole="button" style={styles.retake} onPress={() => router.push("/capture")}>
+          <Text style={styles.retakeText}>↻ Retake</Text>
+        </Pressable>
+      </View>
 
-        {demoMode ? (
-          <View style={styles.previewControls}>
-            <Text style={styles.previewNote}>Local result from the supplied Okinawa menu test fixture. Staff answers in this preview stay in this browser tab; no production API or database is used.</Text>
-          </View>
-        ) : null}
-
-        <Text style={styles.safety}>Estimates only. Always confirm with restaurant staff.</Text>
-        {loading ? <Text style={styles.message}>Preparing menu list…</Text> : null}
-        {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-        {!id && !demoMode ? (
-          <View style={styles.empty}>
-            <Text style={styles.message}>Scan a menu to view its analysis.</Text>
-            <Pressable accessibilityRole="button" onPress={openDemo}><Text style={styles.previewLink}>Open Okinawa menu preview</Text></Pressable>
-          </View>
-        ) : null}
-
-        {summary?.confirmed.length ? (
-          <View style={styles.section}>
-            <View style={styles.sectionRow}><Text style={styles.sectionTitle}>✓ CONFIRMED BY STAFF</Text><Text style={styles.sectionHint}>{summary.confirmed.length} {summary.confirmed.length === 1 ? "dish" : "dishes"}</Text></View>
-            {summary.confirmed.map((dish) => <DishCard key={dish.dishId} dish={dish} confirmed disabled={selectedDishId !== null} onPress={() => router.push({
-              pathname: "/result",
-              params: { id: summary.menuId, dish_id: dish.dishId, ...(demoMode ? { demo: "okinawa" } : {}) },
-            })} />)}
-          </View>
-        ) : null}
-
-        {summary ? (
-          <View style={styles.section}>
-            <View style={styles.sectionRow}><Text style={styles.sectionTitle}>AI ESTIMATE · {summary.estimates.length} DISHES</Text><Text style={styles.sectionHint}>Ask staff for details</Text></View>
-            {summary.estimates.map((dish) => <DishCard key={dish.dishId} dish={dish} confirmed={false} disabled={selectedDishId !== null} onPress={() => setSelectedDishId(dish.dishId)} />)}
-          </View>
-        ) : null}
-
-        <View style={styles.spacer} />
-        <View style={styles.tabBar}>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/map")}><Text style={styles.tab}>⌖{"\n"}Map</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/capture")}><Text style={[styles.tab, styles.activeTab]}>▣{"\n"}Scan</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/profiles")}><Text style={styles.tab}>●{"\n"}Profile</Text></Pressable>
+      {demoMode ? (
+        <View style={styles.previewControls}>
+          <Text style={styles.previewNote}>Local result from the supplied Okinawa menu test fixture. Staff answers in this preview stay in this browser tab; no production API or database is used.</Text>
         </View>
+      ) : null}
+
+      <Text style={styles.safety}>Estimates only. Always confirm with restaurant staff.</Text>
+      {loading ? <Text style={styles.message}>Preparing menu list…</Text> : null}
+      {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      {!id && !demoMode ? (
+        <View style={styles.empty}>
+          <Text style={styles.message}>Scan a menu to view its analysis.</Text>
+          <Pressable accessibilityRole="button" onPress={openDemo}><Text style={styles.previewLink}>Open Okinawa menu preview</Text></Pressable>
+        </View>
+      ) : null}
+
+      {summary?.confirmed.length ? (
+        <View style={styles.section}>
+          <View style={styles.sectionRow}><Text style={styles.sectionTitle}>✓ CONFIRMED BY STAFF</Text><Text style={styles.sectionHint}>{summary.confirmed.length} {summary.confirmed.length === 1 ? "dish" : "dishes"}</Text></View>
+          {summary.confirmed.map((dish) => <DishCard key={dish.dishId} dish={dish} confirmed disabled={selectedDishId !== null} onPress={() => router.push({
+            pathname: "/result",
+            params: { id: summary.menuId, dish_id: dish.dishId, ...(demoMode ? { demo: "okinawa" } : {}) },
+          })} />)}
+        </View>
+      ) : null}
+
+      {summary ? (
+        <View style={styles.section}>
+          <View style={styles.sectionRow}><Text style={styles.sectionTitle}>AI ESTIMATE · {summary.estimates.length} DISHES</Text><Text style={styles.sectionHint}>Ask staff for details</Text></View>
+          {summary.estimates.map((dish) => <DishCard key={dish.dishId} dish={dish} confirmed={false} disabled={selectedDishId !== null} onPress={() => setSelectedDishId(dish.dishId)} />)}
+        </View>
+      ) : null}
+
+      <View style={styles.spacer} />
+      <View style={styles.tabBar}>
+        <Pressable accessibilityRole="button" onPress={() => router.push("/map")}><Text style={styles.tab}>⌖{"\n"}Map</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push("/capture")}><Text style={[styles.tab, styles.activeTab]}>▣{"\n"}Scan</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push("/profiles")}><Text style={styles.tab}>●{"\n"}Profile</Text></Pressable>
       </View>
     </ScrollView>
     <DishDetailSheet detail={selectedDetail} onClose={closeSheet} onAskStaff={askStaff} />
@@ -179,8 +177,7 @@ export default function MenuScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.white },
-  canvas: { flexGrow: 1, alignItems: "center" },
-  phone: { width: "100%", maxWidth: 440, minHeight: 720, flexGrow: 1, paddingTop: 54, paddingHorizontal: 20 },
+  pageContent: { flexGrow: 1, paddingTop: 24, paddingHorizontal: 20 },
   heading: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   headingCopy: { flex: 1 },
   title: { color: colors.ink, fontSize: 27, fontWeight: "800", lineHeight: 32 },

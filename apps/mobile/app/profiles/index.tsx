@@ -36,8 +36,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.phone}>
-        <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()}><Text style={styles.back}>‹</Text></Pressable>
           <Text style={styles.headerLabel}>PROFILE</Text>
@@ -62,20 +61,18 @@ export default function ProfileScreen() {
           <Text style={styles.allergenList}>{selectedNames.length ? selectedNames.join(" · ") : "No allergens selected yet"}</Text>
         </View>
 
-        </ScrollView>
-        <View style={styles.tabBar}>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/map")}><Text style={styles.tab}>⌖{"\n"}Map</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => router.push("/capture")}><Text style={styles.tab}>▣{"\n"}Scan</Text></Pressable>
-          <Text style={[styles.tab, styles.activeTab]}>●{"\n"}Profile</Text>
-        </View>
+      </ScrollView>
+      <View style={styles.tabBar}>
+        <Pressable accessibilityRole="button" onPress={() => router.push("/map")}><Text style={styles.tab}>⌖{"\n"}Map</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push("/capture")}><Text style={styles.tab}>▣{"\n"}Scan</Text></Pressable>
+        <Text style={[styles.tab, styles.activeTab]}>●{"\n"}Profile</Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.white, alignItems: "center" },
-  phone: { width: "100%", maxWidth: 440, flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.white },
   body: { paddingTop: 28, paddingHorizontal: 20, paddingBottom: 20 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   back: { color: colors.green, fontSize: 31, lineHeight: 35, paddingHorizontal: 5 },

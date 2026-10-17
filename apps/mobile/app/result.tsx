@@ -39,53 +39,50 @@ export default function ResultScreen() {
   });
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.canvas}>
-      <View style={styles.phone}>
-        <View style={styles.content}>
-          {complete && dish ? (
-            <>
-              <Text style={styles.dishName}>{dish.display_name || dish.name}{dish.display_name && dish.display_name !== dish.name ? ` ${dish.name}` : ""}</Text>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.pageContent}>
+      <View style={styles.content}>
+        {complete && dish ? (
+          <>
+            <Text style={styles.dishName}>{dish.display_name || dish.name}{dish.display_name && dish.display_name !== dish.name ? ` ${dish.name}` : ""}</Text>
 
-              <View style={[styles.resultBanner, { backgroundColor: result.background }]}>
-                <Text style={[styles.resultTitle, { color: result.color }]}>{result.title}</Text>
-                <Text style={[styles.resultDescription, { color: result.color }]}>{result.description}</Text>
-              </View>
+            <View style={[styles.resultBanner, { backgroundColor: result.background }]}>
+              <Text style={[styles.resultTitle, { color: result.color }]}>{result.title}</Text>
+              <Text style={[styles.resultDescription, { color: result.color }]}>{result.description}</Text>
+            </View>
 
-              <View style={styles.tableHeader}>
-                <Text style={styles.columnHeading}>Your allergen</Text>
-                <Text style={styles.columnHeading}>Staff answer</Text>
-              </View>
-              <View style={styles.answerTable}>
-                {answers.map((item, index) => {
-                  const answer = item!.current_answer!.answer;
-                  const appearance = answerStyles[answer];
-                  return (
-                    <View key={item!.allergen_id} style={[styles.answerRow, index > 0 && styles.rowDivider]}>
-                      <Text style={styles.allergenName}>{item!.display_name}</Text>
-                      <Text style={[styles.answerBadge, { backgroundColor: appearance.backgroundColor, color: appearance.color }]}>{appearance.label}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-              {recheck ? <Text style={styles.recheck}>The menu estimate and staff answer differ. Please check with staff again.</Text> : null}
-            </>
-          ) : (
-            <Text accessibilityRole="alert" style={styles.unavailable}>This confirmation is not available in this tab.</Text>
-          )}
-        </View>
-
-        <Pressable accessibilityRole="button" onPress={backToMenu} style={styles.backButton}>
-          <Text style={styles.backText}>Back to menu</Text>
-        </Pressable>
+            <View style={styles.tableHeader}>
+              <Text style={styles.columnHeading}>Your allergen</Text>
+              <Text style={styles.columnHeading}>Staff answer</Text>
+            </View>
+            <View style={styles.answerTable}>
+              {answers.map((item, index) => {
+                const answer = item!.current_answer!.answer;
+                const appearance = answerStyles[answer];
+                return (
+                  <View key={item!.allergen_id} style={[styles.answerRow, index > 0 && styles.rowDivider]}>
+                    <Text style={styles.allergenName}>{item!.display_name}</Text>
+                    <Text style={[styles.answerBadge, { backgroundColor: appearance.backgroundColor, color: appearance.color }]}>{appearance.label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            {recheck ? <Text style={styles.recheck}>The menu estimate and staff answer differ. Please check with staff again.</Text> : null}
+          </>
+        ) : (
+          <Text accessibilityRole="alert" style={styles.unavailable}>This confirmation is not available in this tab.</Text>
+        )}
       </View>
+
+      <Pressable accessibilityRole="button" onPress={backToMenu} style={styles.backButton}>
+        <Text style={styles.backText}>Back to menu</Text>
+      </Pressable>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.white },
-  canvas: { flexGrow: 1, alignItems: "center" },
-  phone: { width: "100%", maxWidth: 440, flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 26 },
+  pageContent: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 26 },
   content: { flexGrow: 1, justifyContent: "center", paddingVertical: 24 },
   dishName: { color: colors.ink, fontSize: 25, lineHeight: 32, fontWeight: "800", marginBottom: 26 },
   resultBanner: { borderRadius: 18, padding: 20, marginBottom: 32 },
