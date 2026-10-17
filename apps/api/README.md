@@ -470,7 +470,7 @@ LOCAL_SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres .v
   - 共有レート制限：新しい1分のウィンドウで解析要求（GIF）を7回送り、1〜5回目415、6・7回目429 `rate_limited`。Vercel上は `RATE_LIMIT_BACKEND=memory` では起動しない設計のため、Upstash（`KV_REST_API_URL`・`KV_REST_API_TOKEN`）で数えている。クライアントIPはVercelの転送ヘッダーで判定されている。
   - 確認後に `Meelyze-plus` を読み取りで確認し、メニュー・料理・店舗・確認・アカウントはすべて0件、Storageのオブジェクトも0件（書き込みなし）。
   - Vercelのログ（ユーザーがダッシュボードから書き出した、08:41〜09:11 UTCの35件）：要求のログはメソッド・パス（クエリなし＝座標なし）・ステータスだけで、トークン・APIキー・メール・画像パスは出ていない。アプリのログはGemini SDKの `AFC is enabled with max remote calls: 10.`（情報レベル、機密なし）だけ。パスにはPlace ID・`menu_id` が含まれる（ログ出力の禁止対象ではない）。
-  - 上記のログで、環境変数を設定する前の最初のデプロイが `RATE_LIMIT_BACKEND=memory` の設定エラーで起動しなかったこと（想定どおり）を確認。その際のpydanticのエラーは入力値（`input_value`、先頭・末尾の約25文字に切り詰めた設定の辞書）を表示しており、設定の組み合わせによっては秘密値の一部が関数ログに出うるため、`app/config.py` の `load_settings` で項目名と理由だけの `SettingsError` に置き換えた（元の例外も連鎖させない。`tests/test_config.py` で確認）。**この修正はまだデプロイしていない**（mainへの反映後に有効）。
+  - 上記のログで、環境変数を設定する前の最初のデプロイが `RATE_LIMIT_BACKEND=memory` の設定エラーで起動しなかったこと（想定どおり）を確認。その際のpydanticのエラーは入力値（`input_value`、先頭・末尾の約25文字に切り詰めた設定の辞書）を表示しており、設定の組み合わせによっては秘密値の一部が関数ログに出うるため、`app/config.py` の `load_settings` で項目名と理由だけの `SettingsError` に置き換えた（元の例外も連鎖させない。`tests/test_config.py` で確認）。この修正はPR #4でmainに反映し、本番デプロイ（`649f315`）後にhealth・マスタ・周辺検索・CORS・401を再確認した。
 - 未実施・未検証：
   - 公開URLでの書き込みを伴う一巡（解析の成功・店員確認・登録・ログイン成功・本人設定。本番兼用DBのため未実施）、P1の成功応答。
   - フロント・スマートフォンでの一巡（00のU3）。**API検証済み／アプリ全体は未完**。
