@@ -4,7 +4,7 @@
 
 ## 全体像
 
-確認用の8テーブルとアカウント用の3テーブル（P1）の計11テーブル、DB関数4つ（RPC）、検証用トリガー、公開ビュー3つ、非公開のStorageバケット1つで構成する。予測値を保存するテーブルや、ログイン用のセッションテーブルは作らない。SupabaseのAuth（`auth.users`）は使わない。
+確認用の8テーブルとアカウント用の3テーブル（P1）の計11テーブル、DB関数4つ（RPC）、検証用トリガー、公開ビュー3つ、非公開のStorageバケット1つで構成する。判定の結果を保存するテーブルや、ログイン用のセッションテーブルは作らない。SupabaseのAuth（`auth.users`）は使わない。
 
 ```mermaid
 erDiagram
@@ -125,12 +125,15 @@ erDiagram
 | `session_id` | uuid | 必須。`confirmation_sessions` への外部キー |
 | `dish_id` / `allergen_id` | uuid / smallint | 必須。料理は確認と同じメニューのものに限る |
 | `dish_version` | integer | 必須。回答時点の料理の版。RPCが料理の現在の版を保存し、APIからは送らない |
-| `answer` | text | 必須。`contains`（含まれる）／`cross_contact`（交差接触）／`not_contains`（含まれない）／`unknown`（分からない） |
+| `answer` | text | 必須。`contains`（含まれる）／`cross_contact`（同じ料理器具を使っている）／`not_contains`（含まれない）／`unknown`（わからない）。APIでは `cross_contact` を `shared_utensils`、`not_contains` を `does_not_contain` と呼び、APIが変換する（下記） |
 | `created_at` | timestamptz | `now()` |
 
 - 一意制約は `(session_id, dish_id, allergen_id)`。作成後は更新できない（`trg_answer_immutable`）。
 - 未回答（欠落・null）は保存しない。明示的な `unknown` は有効な回答として保存する。食事制限のみを確認した場合は、このテーブルに行を作らない。
 - 回答は確認をまたいで上書きせず、蓄積する。
+- DBの値とAPIの値の対応（08の決定。DB・マイグレーションは変更しない）：`contains`↔`contains`、`cross_contact`↔`shared_utensils`、`not_contains`↔`does_not_contain`、`unknown`↔`unknown`。変換はAPIの `app/services/answers.py` の1か所で行い、RPCにはDBの値を渡す。
+- `cross_contact` の意味は、旧ラベル「原材料ではないが器具を共有（交差接触）」から「対象を使う別の料理と器具を共有している。原材料への含有は未確認」に変わった。`not_contains` は原材料についての回答で、交差接触がないことは意味しない。2026-10-17時点で `Meelyze-plus` に回答はなく、旧ラベルで入力された回答の扱いは不要。
+- 履歴の集計では `contains` をα、`not_contains` をβに加え、`cross_contact`・`unknown` は件数・日時だけに使う（[API仕様の判定アルゴリズム](api.md#判定アルゴリズム)）。
 
 ### `accounts`（P1）
 
@@ -180,7 +183,7 @@ erDiagram
 | `dish_id` | uuid | 必須。`dishes` への外部キー。確認と同じメニュー |
 | `dietary_restriction_id` | smallint | 必須。`dietary_restrictions` への外部キー |
 | `dish_version` | integer | 必須。回答時点の料理の版。RPCが料理の現在の版を保存し、APIからは送らない |
-| `answer` | text | 必須。`not_supported`／`supported`／`cross_contact`／`unknown` |
+| `answer` | text | 必須。`not_supported`／`supported`／`cross_contact`／`unknown`。APIでも同じ値。履歴の集計では `not_supported` をα、`supported` をβに加え、`cross_contact`・`unknown` は件数・日時だけ |
 | `created_at` | timestamptz | `now()` |
 
 一意制約は `(session_id, dish_id, dietary_restriction_id)`。アレルゲン回答と同じ確認に紐づけ、同じRPCで保存する。`unknown` は明示回答として許可し、未回答は拒否する。作成後は更新しない。
@@ -204,7 +207,7 @@ erDiagram
 | `idx_dishes_menu` | `dishes(menu_id)` | メニュー内の料理取得 |
 | `idx_dishes_name_key` | `dishes(name_key)` | 同じ料理名の過去の確認の検索 |
 | `idx_sessions_menu` / `idx_sessions_restaurant` | `confirmation_sessions` | 確認の検索、公開判定 |
-| `idx_answers_dish_allergen_date` | `confirmation_answers(dish_id, allergen_id, created_at desc)` | 予測に使う回答の取得 |
+| `idx_answers_dish_allergen_date` | `confirmation_answers(dish_id, allergen_id, created_at desc)` | 判定（履歴の集計）に使う回答の取得 |
 | `accounts_email_key`（一意制約） | `accounts(email)` | ログイン時の検索、重複登録の拒否 |
 | `account_allergens_pkey`（主キー） | `account_allergens(account_id, allergen_id)` | 本人のアレルゲン取得 |
 | `idx_dietary_answers_dish_item_date` | `confirmation_dietary_answers(dish_id, dietary_restriction_id, created_at desc)` | 食事制限の過去回答検索 |
@@ -309,7 +312,7 @@ Storageへの画像保存は別の処理になる。DB登録が失敗した場�
 
 | 用途 | 取得範囲 |
 |---|---|
-| 解析・本人履歴の予測 | 同じ店舗・`name_key`・項目IDの全回答。非公開回答も集計し、個別の確認履歴は混ぜない。取得SQL例は [Supabase README「予測用の過去回答の取得」](../supabase/README.md#予測用の過去回答の取得api-4517) |
+| 解析・本人履歴の判定（履歴の集計） | 同じ店舗・`name_key`・項目IDの全回答。非公開回答も集計し、個別の確認履歴は混ぜない。取得SQL例は [Supabase README「予測用の過去回答の取得」](../supabase/README.md#予測用の過去回答の取得api-4517) |
 | 公開集計 | 公開ビュー3つのみ。料理単位の代表表示・集計方法は [API 7](api.md#public-menus) に従う |
 | 本人履歴 | 基礎テーブルを常に `menus.account_id = JWT.sub` で絞る。非公開・未確認・店舗未選択も含む。取得SQL例は [Supabase README「本人履歴の取得」](../supabase/README.md#本人履歴の取得api-1617) |
 
@@ -317,7 +320,7 @@ Storageへの画像保存は別の処理になる。DB登録が失敗した場�
 
 所有者と登録時同意は解析時に固定し、ゲストの解析を登録後に移管しない。本人履歴の個別回答はそのメニューの確認だけを返す。画像削除・解析トークン失効後も本人は解析済みテキストと回答を読めるが、回答追加には期限内の解析用トークンが必要。
 
-予測値は保存せずAPIで計算する。表記ゆれ（例：海老／えび）の統合は行わず、店舗未選択の回答は予測に再利用しない。
+判定の結果は保存せずAPIで計算する。表記ゆれ（例：海老／えび）の統合は行わず、店舗未選択の回答は履歴に再利用しない。
 
 ## Storage
 

@@ -61,3 +61,20 @@ def authorized_menu(
     if utcnow() >= menu.analysis_expires_at:
         raise ApiError(410, "analysis_expired")
     return AuthorizedMenu(menu=menu, token=token)
+
+
+def require_account(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Client, Depends(get_supabase_client)],
+) -> str:
+    """アカウント用トークンを必須にし、検証済みの `sub`（アカウントID）を返す（API 10〜12・14〜17）。
+
+    操作対象のアカウントは常にこの値で決め、URL・本文のアカウントIDは受け取らない。解析用トークンは401。
+    """
+    from app.services.auth import verify_account_token
+
+    token = bearer_token(request)
+    if token is None:
+        raise ApiError(401, "unauthorized")
+    return verify_account_token(token, settings, db)

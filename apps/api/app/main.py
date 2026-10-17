@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import Settings, get_settings
 from app.errors import register_exception_handlers, unhandled_error_middleware
 from app.log_filters import install_log_filters
-from app.routers import confirmations, health, masters, menus, places
+from app.routers import auth, confirmations, health, masters, me, menus, places, public_menus
 
 API_PREFIX = "/api/v1"
 
@@ -35,6 +35,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(places.router, prefix=API_PREFIX)
     app.include_router(menus.router, prefix=API_PREFIX)
     app.include_router(confirmations.router, prefix=API_PREFIX)
+    app.include_router(public_menus.router, prefix=API_PREFIX)
+    app.include_router(auth.router, prefix=API_PREFIX)
+    app.include_router(me.router, prefix=API_PREFIX)
     return app
 
 

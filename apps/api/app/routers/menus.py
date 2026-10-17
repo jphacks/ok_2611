@@ -6,7 +6,6 @@ Place IDの確認 → Gemini → 出力の検証 → 店舗の登録 → Storage
 """
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -41,6 +40,7 @@ from app.services.menu_results import (
 from app.services.places import PlacesClient, get_optional_places_client, verify_place_exists
 from app.services.rate_limit import RateLimiter, RateLimitRule, enforce_rate_limit, get_rate_limiter
 from app.services.supabase_client import get_supabase_client
+from app.services.target_ids import check_ids, parse_id_list, parse_query_ids
 from app.services.tokens import bearer_token, hash_analysis_token, new_analysis_token
 
 logger = logging.getLogger("app.menus")
@@ -54,7 +54,6 @@ ANALYZE_RATE_LIMITS = (
 # 画像2 MiBにmultipartの区切り・他のフィールドを加えた上限（Vercelの本文上限4.5MBより小さい）
 MAX_REQUEST_BYTES = MAX_IMAGE_BYTES + 64 * 1024
 FORM_FIELDS = frozenset({"image", "google_place_id", "allergen_ids", "dietary_restriction_ids", "locale"})
-_ID_PATTERN = re.compile(r"^[0-9]{1,3}$")
 
 _ERRORS = {
     401: {"model": ErrorResponse, "description": "unauthorized / invalid_analysis_token / account_token_expired"},
@@ -133,18 +132,6 @@ def _single_text(values: list) -> str | None:
     return values[0]
 
 
-def _id_list(values: list) -> list[int] | None:
-    """同名partの繰り返し。カンマ区切りやJSON配列の文字列は受け付けない。"""
-    if not values:
-        return None
-    ids = []
-    for value in values:
-        if not isinstance(value, str) or not _ID_PATTERN.fullmatch(value):
-            raise _invalid()
-        ids.append(int(value))
-    return ids
-
-
 async def parse_analyze_form(request: Request) -> AnalyzeForm:
     content_type = request.headers.get("content-type", "")
     if content_type.split(";", 1)[0].strip().lower() != "multipart/form-data":
@@ -181,16 +168,9 @@ async def parse_analyze_form(request: Request) -> AnalyzeForm:
         image=data,
         image_type=upload.content_type,
         google_place_id=place_id,
-        allergen_ids=_id_list(form.getlist("allergen_ids")),
-        dietary_restriction_ids=_id_list(form.getlist("dietary_restriction_ids")),
+        allergen_ids=parse_id_list(form.getlist("allergen_ids")),
+        dietary_restriction_ids=parse_id_list(form.getlist("dietary_restriction_ids")),
     )
-
-
-def _check_ids(ids: list[int] | None, known: set[int], code: str) -> None:
-    if ids is None:
-        return
-    if len(ids) != len(set(ids)) or not set(ids) <= known:
-        raise ApiError(422, code)
 
 
 def _assemble(
@@ -244,8 +224,8 @@ def _analyze(
     account_id = verify_account_token(account_token, settings, db) if account_token is not None else None
 
     allergen_items, dietary_items, allergen_names, dietary_names = load_masters(db)
-    _check_ids(form.allergen_ids, set(allergen_names), "invalid_allergen_ids")
-    _check_ids(form.dietary_restriction_ids, set(dietary_names), "invalid_dietary_restriction_ids")
+    check_ids(form.allergen_ids, set(allergen_names), "invalid_allergen_ids")
+    check_ids(form.dietary_restriction_ids, set(dietary_names), "invalid_dietary_restriction_ids")
 
     image: SanitizedImage = sanitize_image(form.image, form.image_type)
     if form.google_place_id is not None:
@@ -322,15 +302,6 @@ async def analyze_menu(
     return await run_in_threadpool(_analyze, form, account_token, settings, db, places_client, analyzer)
 
 
-def _query_ids(request: Request, name: str, raw: str | None) -> list[int] | None:
-    """API 5 の対象ID。カンマ区切り1つだけを受け付ける（同名クエリの繰り返しは422）。"""
-    if len(request.query_params.getlist(name)) > 1:
-        raise _invalid()
-    if raw is None:
-        return None
-    return _id_list(raw.split(","))
-
-
 @router.get(
     "/menus/{menu_id}",
     operation_id="get_menu",
@@ -345,10 +316,10 @@ def get_menu(
     settings: Annotated[Settings, Depends(get_settings)],
     db: Annotated[Client, Depends(get_supabase_client)],
 ) -> MenuResponse:
-    allergen_ids = _query_ids(request, "allergen_ids", query.allergen_ids)
-    dietary_ids = _query_ids(request, "dietary_restriction_ids", query.dietary_restriction_ids)
+    allergen_ids = parse_query_ids(request, "allergen_ids", query.allergen_ids)
+    dietary_ids = parse_query_ids(request, "dietary_restriction_ids", query.dietary_restriction_ids)
     _, _, allergen_names, dietary_names = load_masters(db)
-    _check_ids(allergen_ids, set(allergen_names), "invalid_allergen_ids")
-    _check_ids(dietary_ids, set(dietary_names), "invalid_dietary_restriction_ids")
+    check_ids(allergen_ids, set(allergen_names), "invalid_allergen_ids")
+    check_ids(dietary_ids, set(dietary_names), "invalid_dietary_restriction_ids")
     targets = Targets(allergen_ids, dietary_ids or [])
     return _assemble(db, access.menu, targets, allergen_names, dietary_names, settings, include_menu_answers=True)

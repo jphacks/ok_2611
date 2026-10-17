@@ -2,7 +2,7 @@
 
 Meelyze+ のAPIサーバー。FastAPIで `/api/v1` を提供し、Supabase（PostgreSQL・Storage）、Gemini、Google Places APIを操作する。ブラウザから呼ばれる唯一のサーバーで、秘密鍵と権限の検証はすべてここに置く。
 
-> 実装済みは [01](task/01_api_foundation.md) の土台とAPI 1・2・13、[02](task/02_places.md) のAPI 3とPlace IDの存在確認、[03](task/03_menu_analysis.md) のAPI 4・5、[04](task/04_confirmations.md) のAPI 6（2026-10-17）。それ以外の節は実装方針であり、動作は確認していない。
+> 全17操作（P0：API 1〜6・13、P1：API 7〜12・14〜17）を実装し、ローカルのSupabaseと実キーのGemini・Placesで検証した（2026-10-17）。`contracts/openapi.yaml` と照合済み。Vercelへのデプロイと実機での一巡は未実施（[05](task/05_verify_deploy.md)）。
 
 ## 技術スタック
 
@@ -18,9 +18,9 @@ Meelyze+ のAPIサーバー。FastAPIで `/api/v1` を提供し、Supabase（Pos
 | DB・Storage | Supabase Python クライアント | サーバー用鍵（`SUPABASE_SECRET_KEY`）で操作。保存はRPCを使う |
 | VLM | Google GenAI SDK（Gemini `gemini-3.8-flash`） | 構造化JSONで出力させ、jsonschemaで再検証 |
 | 店舗検索 | Google Places API（New）、HTTPクライアント（httpx） | Nearby Search、Place Details（IDのみ）。サーバー用キー |
-| パスワード（P1） | argon2-cffi | Argon2id |
+| パスワード（P1） | argon2-cffi 25.1.0 | Argon2id（既定パラメータ。弱いハッシュはログイン時に再ハッシュ） |
 | アカウント用トークン | PyJWT | HS256。検証はAPI 4の任意Bearer（03）、発行はP1（06） |
-| メールの検証（P1） | email-validator | Pydanticの `EmailStr` |
+| メールの検証（P1） | email-validator 2.3.0 | 前後空白の除去・小文字化の後に形式を検証（到達性は確認しない） |
 | テスト | pytest、FastAPIのTestClient | Google・Geminiはモックに置き換える |
 | デプロイ | Vercel | Root Directoryは `apps/api` |
 
@@ -41,13 +41,15 @@ Meelyze+ のAPIサーバー。FastAPIで `/api/v1` を提供し、Supabase（Pos
 | `app/dependencies.py` | `no_store`（`Cache-Control: no-store` を付ける依存）、`client_ip`、`authorized_menu`（解析用トークンでメニューへの権限・期限を確認。API 5・6） |
 | `app/routers/` | エンドポイント |
 | `app/schemas/` | Pydanticの入出力 |
-| `app/services/` | 作成済み：`supabase_client.py`、`db_errors.py`、`masters.py`、`rate_limit.py`、`places.py`（Google）、`publication.py`（公開ビューの照合）、`images.py`（画像の検証・無害化）、`menu_analysis.py`（Gemini・出力の検証）、`tokens.py`（解析用トークン）、`auth.py`（アカウント用トークンの検証。発行は06）、`menus.py`（メニューのDB・Storage操作）、`answers.py`（回答の値の対応）、`assessment.py`（判定）、`menu_results.py`（API 4・5の応答、マスタの読み込み）、`confirmations.py`（API 6の入力検証・公開判定・結果）。未作成：公開集計（07）・アカウント（06） |
+| `app/services/` | 作成済み：`supabase_client.py`、`db_errors.py`、`masters.py`、`rate_limit.py`、`places.py`（Google）、`publication.py`（公開ビューの照合）、`images.py`（画像の検証・無害化）、`menu_analysis.py`（Gemini・出力の検証）、`tokens.py`（解析用トークン）、`auth.py`（アカウント用トークンの検証。発行は06）、`menus.py`（メニューのDB・Storage操作）、`answers.py`（回答の値の対応）、`assessment.py`（判定）、`menu_results.py`（API 4・5の応答、マスタの読み込み）、`confirmations.py`（API 6の入力検証・公開判定・結果）、`target_ids.py`（判定の対象ID）、`public_menus.py`（API 7の公開集計）、`history.py`（API 16・17）。`auth.py` はアカウント用トークンの発行・検証と登録・ログイン |
 | `prompts/menu_analysis.md` | VLMのプロンプトv4 |
 | `contracts/menu_analysis.schema.json` | VLM出力の契約（JSON Schema） |
 | `tests/` | 解析用トークン、店員確認、公開条件、予測、アカウントのテスト |
 | `.env.example` | 環境変数の例（秘密値は空欄） |
+| `vercel.json`・`.vercelignore` | Vercelの関数設定（実行時間・同梱から除くファイル）とアップロードの除外 |
+| `scripts/` | `compare_openapi.py`（契約の照合）、`delete_expired_images.py`（画像の手動削除）。デプロイには含めない |
 
-VLMのプロンプトと出力の契約は `apps/api/prompts/menu_analysis.md`・`apps/api/contracts/menu_analysis.schema.json` に置く（03で作成）。VercelのRoot Directoryが `apps/api` のため、リポジトリ直下（`prompts/`・`contracts/`）ではなくこの配下とした。コードは `app/config.py` の `API_DIR` からの相対パスで読む。[開発・検証](../../docs/development.md) の「未作成のファイル」「デプロイと運用」にあるリポジトリ直下の記述は未更新（03の作業範囲外）。Vercelへの同梱は05で確認する。
+VLMのプロンプトと出力の契約は `apps/api/prompts/menu_analysis.md`・`apps/api/contracts/menu_analysis.schema.json` に置く（03で作成）。VercelのRoot Directoryが `apps/api` のため、リポジトリ直下（`prompts/`・`contracts/`）ではなくこの配下とした。コードは `app/config.py` の `API_DIR` からの相対パスで読む。[開発・検証](../../docs/development.md) の「未作成のファイル」「デプロイと運用」にあるリポジトリ直下の記述は未更新（03の作業範囲外）。Vercelの同梱から外していないことは05で確認した（`tests/test_deploy_config.py`）。実際のデプロイでの読込は未確認。
 
 ## 環境変数
 
@@ -229,7 +231,7 @@ Supabaseクライアント経由のRPC・テーブル操作のエラーは、Pos
 
 ## 店員回答の値の対応
 
-[08の決定](task/08_algorithm_spec.md#決定事項) により、アレルゲンの4択はAPIとDBで値の名前が異なる。変換は `app/services/answers.py` の1か所だけで行い、03（判定）・04（確認保存）・06・07はそこを使う。**RPC（`complete_confirmation_session`）にはDBの値を渡す。**
+[08の決定](task/08_algorithm_spec.md#決定事項) により、アレルゲンの4択はAPIとDBで値の名前が異なる（正本は [API仕様の判定アルゴリズム](../../docs/api.md#判定アルゴリズム)）。変換は `app/services/answers.py` の1か所だけで行い、03（判定）・04（確認保存）・06・07はそこを使う。**RPC（`complete_confirmation_session`）にはDBの値を渡す。**
 
 | 画面の選択肢 | APIの値（`answer`） | DBの値（`answer`） | 履歴の集計 |
 |---|---|---|---|
@@ -240,7 +242,7 @@ Supabaseクライアント経由のRPC・テーブル操作のエラーは、Pos
 
 - 食事制限はAPIとDBで同じ値：`not_supported`（α）・`cross_contact`（加算しない）・`supported`（β）・`unknown`（加算しない）。
 - APIのフィールド名は現行の `answer` のままとした（algorithms.mdの `answer_status` は採らない。DBの列も `answer`）。API 6はアレルゲンの旧値（`not_contains`・`cross_contact`）を422 `answers_invalid` にする（04）。
-- 結果画面の英語ラベル（`answer_label`、`answers.py`）：アレルゲンは `Contains`／`Shares cooking utensils (ingredients not confirmed)`／`Not an ingredient (cross-contact not confirmed)`／`Unknown`、食事制限は `Not supported`／`Cross-contact`／`Supported (staff answer)`／`Unknown`。正本（docs/api.md）への反映は08。
+- 結果画面の英語ラベル（`answer_label`、`answers.py`）：アレルゲンは `Contains`／`Shares cooking utensils (ingredients not confirmed)`／`Not an ingredient (cross-contact not confirmed)`／`Unknown`、食事制限は `Not supported`／`Cross-contact`／`Supported (staff answer)`／`Unknown`。docs/api.md・OpenAPI・画面仕様に反映済み（08）。
 - 未回答はレコードなしで、APIでは `current_answer: null`。`unknown` と区別する。
 
 ## 画像解析と再取得（03）
@@ -290,7 +292,7 @@ Supabaseクライアント経由のRPC・テーブル操作のエラーは、Pos
 - 対象：`allergen_ids` を指定すればその項目（AIの候補がなければ `ai` は `unknown`／`unavailable`）、省略すれば料理ごとにAIが候補に挙げた項目（`unknown` 以外）。並びはマスタの表示順。食事制限は指定した項目だけで、省略時は空配列。食事制限の `notices` は `history_shared_utensils` の代わりに `history_cross_contact`。
 - `ai.weight`：根拠の分類ごとの `(c+1)/(n+2)`。検証データがないため常に `null`（`AI_SOURCE_CALIBRATION` が空）。
 - `current_answer`：このメニューの確認のうち、その料理・項目に回答した最新のもの。未回答は `null`。
-- `store_history`：店舗あり・範囲内の回答が1件以上のときだけ。店舗未選択は常に `null`。同じ店舗（`confirmation_sessions.restaurant_id`）・`name_key`・項目IDの回答を非公開も含めて集め、**同じメニューへの複数回の確認は最新の1件だけ**を数える（08の初期案。同時刻の同名料理は案内順で先の回答）。**このメニュー自身の最新の回答も履歴に含める**。α・βは小数3桁、`score` は「含まれる」「含まれない」（食事制限は `not_supported`・`supported`）が0件なら `null`。
+- `store_history`：店舗あり・範囲内の回答が1件以上のときだけ。店舗未選択は常に `null`。同じ店舗（`confirmation_sessions.restaurant_id`）・`name_key`・項目IDの回答を非公開も含めて集め、**同じメニューへの複数回の確認は最新の1件だけ**を数える（08の決定。同時刻の同名料理は案内順で先の回答）。**このメニュー自身の最新の回答も履歴に含める**。α・βは小数3桁、`score` は「含まれる」「含まれない」（食事制限は `not_supported`・`supported`）が0件なら `null`。
 - `notices`：`ai_staff_mismatch` はAIの `explicit_present`（食事制限は `explicit_conflict`）と今回の `does_not_contain`（`supported`）の組だけ（推定の候補や器具共有は数えない）。`recheck_current_answer` は今回の回答が `unknown`。`history_conflict` は履歴に α側とβ側が両方ある。`history_shared_utensils` は履歴に器具共有がある。
 
 ## 店員回答と公開可否の一括保存（04）
@@ -304,6 +306,99 @@ API 6 `POST /menus/{menu_id}/confirmations`。
 - `user_publish_consent` は解析時に保存した `menus.user_publish_consent` を読む。`is_public` は店舗あり・その値がtrue・今回の `publish_consent` がtrueのときだけtrue（ゲストは常にfalse、同じメニューの別の確認の同意は使わない）。
 - 結果：回答した料理だけをメニューの順に、アレルゲンはマスタの表示順、食事制限はID順で返す。各項目は `answer`（APIの値）・`answer_label`・`ai`・`store_history`・`notices`（03と同じ形）。`store_history` は保存後に読むため今回の回答も含む。再送（200）でも同じ形で返す。
 - ログには回答・トークンを出さない（テストで確認）。
+
+## 公開メニューの集計（07）
+
+API 7 `GET /places/{google_place_id}/public-menus`（認証なし、`no-store`）。
+
+- 読み取り元は公開ビュー `published_menus`・`published_confirmation_answers`・`published_dietary_answers` だけ（`app/services/public_menus.py`）。非公開回答を含む `app/services/menus.py` の履歴の取得は使わない。
+- 同じ店舗・`name_key` ごとに1料理。表示内容とAIの候補は公開対象のうち最新の料理（撮影日時が最新、同日時は料理IDの降順）から採る。並びは代表料理の撮影日時の降順、同日時は `name_key` の昇順。公開対象がなければ `dishes: []`。
+- 公開回答を03と同じ規則（同じメニューは最新の1件、α・β・S、器具共有・不明は件数だけ）で集計する。今回の回答はなく、各項目は `ai`・`store_history`・`notices`（`history_conflict`・`history_shared_utensils`／`history_cross_contact`）。応答に `match_basis: "name_key"`（暫定の照合）と `staff_answers_verified: false`（未認証の回答）を付ける。
+- 返さないもの：所有者・`menu_id`・`dish_id`・`session_id`・個別の確認・画像・トークン・本人設定。
+- 02の公開料理数（`public_menu_count`）とは、どちらも `published_menus` の `name_key` の種類なので一致する（ローカルDBで確認）。
+
+## アカウント・本人設定・本人履歴（06）
+
+API 8〜12・14〜17。
+
+- 登録（API 8）：メールは前後の空白を除いて小文字にし、形式・254文字以内を検証。ニックネームは前後の空白を除いて1〜30文字、制御文字は拒否。パスワードは8〜128文字（前後の空白は削らない）で、メールアドレスと同じ値は拒否。`publish_consent` は真偽値が必須（欠落・null・`"true"` は422）。`accounts` に5列だけを追加し、同意記録日時・作成日時はDB、文言版 `2026-10-17-v1` はAPIが決める。重複メールは一意制約違反から409 `email_already_registered`（事前のSELECTで判定しない）。IP単位5回／時。
+- ログイン（API 9）：同じ規則で正規化して検索し、アカウントがなくてもダミーのハッシュで照合する。失敗はすべて401 `invalid_credentials`。失敗だけをIP単位10回／分・メールアドレス単位5回／15分で数え（`RateLimiter.count` で増やさずに確認）、上限に達していれば照合せずに429（正しいパスワードでも）。成功時に現行より弱いハッシュは再ハッシュして `password_hash`・`updated_at` だけを更新する。
+- トークン：HS256、`sub`・`iat`・`exp`（24時間）・`typ="account"` だけ。`AUTH_JWT_SECRET` が32バイト未満なら発行せず503（登録前に確認し、登録だけ成功する状態を作らない）。
+- 本人（API 10〜12・14〜17）：`require_account`（`app/dependencies.py`）で検証済みの `sub` を使い、URL・本文のアカウントIDは受け取らない。本人設定の置換は `replace_account_allergens`／`replace_account_dietary_restrictions` を1回呼ぶ。未知・重複IDは422 `invalid_allergen_ids`／`invalid_dietary_restriction_ids`、空配列は全解除。本人設定はメニュー・回答に複製しない。
+- 本人履歴の一覧（API 16）：`menus` を常に `account_id = sub` で絞り、店舗（`restaurants!inner` の `google_place_id`）・カーソルをANDで追加。`created_at DESC, id DESC`。カーソルは前ページ最後の `created_at`（DBの値）とIDをJSONにしてbase64urlにしたもの。復号時にUTCの日時・UUIDとして検証し直してから `or=(created_at.lt."…",and(created_at.eq."…",id.lt.…))` に使う。不正なカーソルは422。他人のメニューを指すカーソルでも所有者条件は外れない。`limit` は1〜50（既定20）。
+- 詳細（API 17）：`id` と `account_id` を同じクエリで検証し、他人・ゲスト・存在しないIDは同じ404。判定は03と同じ処理で、`confirmations` はこのメニューの確認だけを新しい順に、API 6と同じ結果の形で返す。解析用トークンの期限切れ・画像の削除後も読めるが、回答の追加（API 6）には期限内の解析用トークンが必要。
+
+## 仕様の更新（08）
+
+2026-10-17に、判定アルゴリズムの変更を正本に反映した（U5で差分の確認を受ける）。DB・マイグレーションは変更していない。
+
+- `docs/api.md`：判定アルゴリズムを全面更新（AIの候補・今回の回答・履歴・`notices` を別々に返す。`prediction`・`vote_shares`・`ai_prior` を廃止）。algorithms.mdとの関係（本書が正本）と相違の表、4択の値・英語ラベル・DBの値の対応、API 4〜7・17の入出力と例。
+- `contracts/openapi.yaml`：判定のスキーマ（`*_ai_*` に `weight`、`*_current_answer`・`*_store_history`・`*_notices`・公開集計用のスキーマ）、アレルゲンの回答の値、API 6のラベル、API 7の `match_basis`・`staff_answers_verified`、例。API 5に503を追加し、API 12・15の到達しない404を削除。
+- `docs/screens.md`：⑬の選択肢の文言・順序と選択順の案内、⑮のラベル、「判定の表示」（旧「予測の表示」）。
+- `docs/database.md`：DBの値とAPIの値の対応、`cross_contact` の意味の変更、集計での扱い。
+- `docs/development.md`：`AI_PRIOR_WEIGHT_*` の削除、作成済みファイルの配置、判定の検証項目、実装状況。
+- 決定した未決事項：フィールド名は `answer`。同じメニューへの複数回の確認は最新の1件だけを数え、このメニュー自身の最新の回答も履歴に含める。`Meelyze-plus` には回答がなく（2026-10-17に件数を読み取りで確認）、旧ラベルの `cross_contact` の扱いは不要。
+- `requirements.md`（R04「AIと組み合わせる」など）とリポジトリ直下の `README.md` は08の対象外で、旧方式の表現が残っている。
+
+## デプロイ（05）
+
+### Vercelの設定
+
+| 項目 | 値 | 確認 |
+|---|---|---|
+| Root Directory | `apps/api` | プロジェクト設定で指定する |
+| エントリポイント | `app/main.py` の `app`（FastAPIのプリセットが自動検出） | 公式ドキュメント（2026-10-17）と `tests/test_deploy_config.py` |
+| Python | 3.12（`.python-version`） | 同上 |
+| 依存 | `requirements.txt`（実行時だけ。インストール後約89MB、Pythonの上限500MB） | 新しいvenvで計測 |
+| 実行時間 | `vercel.json` の `maxDuration: 120`（Hobby・Proの既定・上限内） | 下記 |
+| 同梱 | プロジェクト内のファイルは既定で関数に含まれる。`prompts/`・`contracts/` は含め、`tests/`・`scripts/`・`task/`・`docs/` などは `vercel.json` の `excludeFiles` で除く | `tests/test_deploy_config.py` |
+| アップロード | `.vercelignore` で `.env`・`.venv/`・テスト・資料をCLIから送らない（`.env.example` は送る） | 同上 |
+
+- 実行時間：解析の主な待ちは、レート制限（2秒×2）・Place IDの確認（5秒）・Gemini（45秒）・Storage保存（15秒）・RPC（10秒）。Supabaseクライアントの既定の時間切れ（PostgREST 120秒）は関数の上限より長いため、PostgREST 10秒・Storage 15秒にした（`app/services/supabase_client.py`）。各呼び出しがすべて時間切れまで待つ最悪の場合は120秒を超え、その場合はVercelの504（`FUNCTION_INVOCATION_TIMEOUT`、共通エラー形式ではない）になる。
+- 本文：Vercelの上限は要求・応答とも4.5MB。APIは本文を2 MiB＋64 KiBまで読み、超えたら413 `image_too_large`。
+- 環境変数（Vercelのプロジェクトに設定）：`SUPABASE_URL`・`SUPABASE_SECRET_KEY`・`GEMINI_API_KEY`・`GOOGLE_MAPS_SERVER_API_KEY`・`ALLOWED_ORIGINS`（フロントのURL）・`RATE_LIMIT_BACKEND=upstash`・`UPSTASH_REDIS_REST_URL`／`UPSTASH_REDIS_REST_TOKEN`（Marketplace連携なら `KV_REST_API_URL`／`KV_REST_API_TOKEN`）。Vercel上（`VERCEL=1`）で `RATE_LIMIT_BACKEND=memory` だと起動時に設定エラーになるため、Upstashの準備（00のU2）がデプロイの前提。`AUTH_JWT_SECRET` は06まで不要（未設定ならBearer付きの解析は401）。
+- デプロイ保護：Vercel Authentication（プレビューの保護）が有効だとフロント・スマートフォンからAPIを呼べない。APIのプロジェクトでは保護を外すか、保護のない本番ドメインを使う。
+- DB：公開URLのAPIは本番兼用の `Meelyze-plus` に接続する（2026-10-17にユーザーが決定。使い捨ての開発用プロジェクトは作らない）。そのため公開URLでは health・マスタ・周辺検索・CORS・エラー応答（不正な入力の422など、DBに書き込まないもの）だけを確認し、解析・店員確認など書込を伴う一巡は公開URLでは試験しない。書込を伴う一巡はローカルSupabaseで確認済み（「実施結果（05）」）。フロント・スマートフォンからの実際の利用（00のU3）で書き込まれたデータは本番兼用DBに残る。
+
+### デプロイの手順
+
+ログイン・Upstashの追加・環境変数の入力は管理画面の操作が必要なため利用者が行う（00のU2）。秘密値はチャット・Markdownに貼らない。
+
+1. Vercelにログインする：`npx vercel@62.2.0 login`（CLIを使う場合）、またはVercelのダッシュボードでGitHubのリポジトリをインポートする。
+2. APIのプロジェクトを作り、Root Directoryを `apps/api` にする（CLIでは `apps/api` で `npx vercel@62.2.0 link`）。
+3. Vercel Marketplaceで Upstash for Redis を追加してAPIのプロジェクトに接続する。
+4. 環境変数（Production）に `SUPABASE_URL`（`https://pqegjvcyfnmqpmwxaogp.supabase.co`、パスなし）・`SUPABASE_SECRET_KEY`・`GEMINI_API_KEY`・`GOOGLE_MAPS_SERVER_API_KEY`・`ALLOWED_ORIGINS`・`RATE_LIMIT_BACKEND=upstash` を設定する（Upstashの変数は連携で設定される）。
+5. デプロイする（`npx vercel@62.2.0 deploy --prod`、またはmainへのマージ）。デプロイ保護を外すか本番ドメインを使う。
+
+### デプロイ後の確認手順
+
+```sh
+API=https://<APIのドメイン>/api/v1
+curl -s $API/health                                     # {"status":"ok"}
+curl -s $API/allergens | python3 -c "import json,sys; print(len(json.load(sys.stdin)['allergens']))"   # 29
+curl -s -o /dev/null -w '%{http_code} %header{access-control-allow-origin}\n' -X OPTIONS $API/menus/analyze \
+  -H "Origin: <フロントのURL>" -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: authorization,content-type'
+curl -s -D - -o /dev/null "$API/places/nearby?lat=35.6812&lng=139.7671" | grep -i cache-control   # no-store
+# 書込を伴う確認（解析・確認）は使い捨てのDBに接続したデプロイでだけ行う
+```
+
+### 契約の照合
+
+`.venv/bin/python scripts/compare_openapi.py` で、実装の `/openapi.json` と `contracts/openapi.yaml` の全17操作を照合する（`--strict` で差分があれば失敗）。`tests/test_openapi_contract.py` は、この照合に加えて、契約の成功応答の例と実装の実際の応答（P0はモック、P1のアカウント・履歴はローカルDB）を契約のスキーマ（JSON Schema 2020-12）で検証する。2026-10-17の結果：差分なし（08で契約を更新した後）。
+
+### 画像の手動削除（開発中）
+
+作成から24時間を過ぎたメニューの画像を、Storage APIで削除する。メニュー・料理・回答・本人履歴の行と `menus.image_path` は残す。
+
+```sh
+.venv/bin/python scripts/delete_expired_images.py                        # 接続先と件数の表示だけ
+.venv/bin/python scripts/delete_expired_images.py --apply                # ローカルで削除
+.venv/bin/python scripts/delete_expired_images.py --apply --allow-remote # ローカル以外（件数を確認してから）
+```
+
+- 接続先は `.env`（または環境変数）の `SUPABASE_URL`。`apps/api/.env` が `Meelyze-plus` を指している場合、表示だけでも本番兼用のDBを読むことに注意する。パス・IDは表示しない。
+- 削除済みの画像は数えない（Storageの一覧と照合する）。`--prefix` で対象を絞れる。
+- 一般公開前の定期削除（スケジュール実行）と保持期間・運用の判断は00のU4に引き継ぐ。
 
 ## コマンド
 
@@ -356,4 +451,29 @@ LOCAL_SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres .v
 - `pytest -m local_db`：23件成功（04の14件を追加、`test_confirmations_local_db.py`）。実際のRPCで、アレルゲンのみ／食事制限のみ／両方・`unknown`・不同意の保存とDBの値（`not_contains`・`cross_contact`）、03の再取得でAPIの値に戻ること、未回答・旧値・不足・直積不足・料理集合不一致・未知ID・別メニューの料理・58件・11料理で行が増えないこと（部分保存なし）、並び順だけ変えた再送が同じ確認（200）、回答・店員同意が違えば409、4並列の同時送信で1件だけ、6回目の新規が422 `confirmation_limit_reached` で上限後も同一内容の再送は200、他メニューのトークン・アカウント用トークン・トークンなしの401、店舗×利用者同意×店員同意の8通りの `is_public` と公開ビュー（`published_confirmation_answers`）の一致、ゲスト・別の確認の同意で公開しないこと、保存した回答が同じ店舗・料理名の次の解析で α・β（含まれる1・含まれない2 → `S=0.4`、食事制限も同じ）に入り、器具共有・不明は件数だけに入ることを確認。試験データは削除済み（残りがないことを確認）。
 - 未検証：Vercel上での動作（05）、画面からの一巡（00のU3）。
 - 04の範囲外として残したもの：`docs/api.md`・`contracts/openapi.yaml`（API 6の値・ラベル・`notices`・`store_history`）・`docs/screens.md` の更新（08）。実装の `/openapi.json` と `contracts/openapi.yaml` は一致しない。
+
+## 実施結果（2026-10-17、05）
+
+- `pytest`：330件成功（ローカルDB結合の27件は環境変数なしでスキップ）。`pytest -m local_db` を含めると357件成功。05の追加：
+  - `test_openapi_contract.py`（2件）：P0の7操作の操作・operationId・パラメーター・本文・ステータスが契約と一致し、成功応答の差分が08の変更だけであること。
+  - `test_deploy_config.py`（5件）：エントリポイント、`prompts/`・`contracts/` を同梱から外していないこと、`.env`・テスト・資料をアップロード・同梱しないこと、`maxDuration` が主な待ち時間を含むこと、本文の上限が4.5MB未満であること。
+  - `integration/test_p0_flow_local_db.py`（4件、ローカルSupabase）：店舗ありで解析→再取得→店員確認（4択すべて・食事制限）→再送→再取得→同じ店舗・料理の次の解析で、「含まれる」がα・「含まれない」がβに入り（`S=0.667`／β=2）、器具共有・不明は件数だけに入ること。店舗なしの一巡（対象省略・食事制限だけ）で次の解析に履歴を使わないこと。期限切れで再取得・確認が410になること。画像の手動削除で、表示だけでは消さず、24時間を過ぎた画像だけを消し、メニューの行が残ること。
+- 実接続（ローカルのUvicorn、DBはローカルSupabase、`.env` のGemini・Placesの実キー）：health、マスタ29件・4件、CORSのプリフライト（許可するオリジンは200、それ以外は400で `Access-Control-Allow-Origin` なし）、周辺検索20件（`no-store`）、実際のPlace IDを指定した解析が201（約14秒、4料理）、再取得200、店員確認201・再送200（ゲストのため `is_public=false`）、確認後の再取得で今回の回答と履歴を確認。解析・再取得・確認の応答は `no-store`。アクセスログ・アプリのログに、トークン・座標・Place ID・APIキー・画像パス・クエリ（選択した対象ID）が出ないことを確認。試験データは削除した。
+- `Meelyze-plus` への読み取り確認（ローカルのAPIを `.env` の接続先で起動し、書き込まないGETだけ）：最初は `.env` のSecret keyが401 `Invalid API key` で拒否されたため、ユーザーがキーを入れ替えた。入れ替え後はhealth 200、マスタ29件・4件、周辺検索20件（公開料理数は全店舗0件）、トークンなしの再取得401、存在しないメニュー404を確認（2026-10-17）。DBには書き込んでいない。
+- Geminiの実キーで429（利用上限）が一度発生し、APIは503 `service_unavailable` を返して何も保存しなかった。無料枠などの上限の確認は00のU1。
+- 未実施・未検証：
+  - Vercelへのデプロイ（このPCにVercel CLIのログイン・プロジェクトの連携がなく、Upstashの環境変数もないため。00のU2）。公開URLでのHTTPS・ファイル読込・画像送信・実行時間・CORS・デプロイ保護、Vercelの転送ヘッダーでのクライアントIP。
+  - 共有レート制限の実際のUpstash接続（REST APIの形式はモックで確認済み）。
+  - フロント・スマートフォンでの一巡（00のU3）。**API検証済み／アプリ全体は未完**。
+  - 実際のメニュー写真での読取精度、20料理に近いメニューでの所要時間。
+  - 08の正本更新（`docs/api.md`・`contracts/openapi.yaml`・`docs/screens.md`・`docs/development.md`）。
+
+## 実施結果（2026-10-17、06・07・08）
+
+- `pytest`：380件成功（ローカルDB結合の49件は環境変数なしでスキップ）。`pytest -m local_db` を含めると429件成功。
+  - 07：`test_public_menus_api.py`（10件。代表料理の選択と並び、複数利用者の公開回答の集計・同じメニューは最新1件・時間減衰、返却項目の限定、公開ビューとマスタだけを読むこと、対象省略時はAIの候補、不明のみで `S=null`、クエリの422）、`integration/test_public_menus_local_db.py`（1件。実際の公開ビューで、利用者不同意・ゲスト・店員不同意・同じメニューの非公開の確認が混ざらず、別の利用者の公開回答は集計されること、02の公開料理数と一致すること）。
+  - 06：`test_accounts_unit.py`（20件。登録の入力検証、カーソルの改ざん、トークンの発行・検証（期限・HS384・typなし・別の鍵）、失敗だけを数えるログイン制限、Upstashの `count`、ログにメール・パスワードを出さないこと）、`integration/test_accounts_local_db.py`（21件。登録の同意true／false・欠落・null・文言版や日時の指定の拒否、大文字小文字違いの重複409、Argon2idだけの保存、ログイン成功・失敗の同じ401・再ハッシュ、失敗の制限、JWTの各不正、本人設定の取得・置換・全解除と他アカウントへの非影響、ログイン後の解析の所有者・登録時同意と設定の非複製、本人履歴の所有者・店舗・カーソル・改ざんカーソル・不正カーソル・解析用トークンの401、詳細の他人・ゲスト・存在しないIDの404、期限切れ・画像削除後の閲覧と回答追加の410）。
+  - 08：`test_openapi_contract.py`（22件。全17操作の照合、契約の成功応答の例18件の検証、P0の実際の応答・API 7の応答・エラー応答の契約スキーマでの検証）。P1のアカウント・履歴の応答はローカルDBの試験で契約スキーマを検証。
+- `Meelyze-plus`（本番兼用）：読み取りだけを実施。回答・メニュー・アカウントはすべて0件（2026-10-17）。書き込む試験は行っていない。
+- 未検証：Vercel上のP1（05のデプロイ後）、実機での登録・ログイン・履歴の一巡、Argon2idの所要時間（Vercelの関数での計測）。
 

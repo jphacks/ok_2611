@@ -9,3 +9,7 @@ pillow==13.0.0
 google-genai==2.31.0
 jsonschema==4.26.0
 PyJWT==2.15.1
+# 06：パスワードのArgon2id・メールアドレスの検証（dnspython 2.9.0は公開から2週間未満のため2.8.0に固定）
+argon2-cffi==25.1.0
+email-validator==2.3.0
+dnspython==2.8.0

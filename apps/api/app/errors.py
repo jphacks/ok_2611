@@ -23,6 +23,7 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "unauthorized": "Authentication is required.",
     "invalid_analysis_token": "The analysis token is invalid.",
     "account_token_expired": "The account token has expired. Please log in again.",
+    "invalid_credentials": "The email address or password is incorrect.",
     "not_found": "The resource was not found.",
     "place_not_found": "The place was not found.",
     "image_too_large": "The image exceeds the 2 MiB limit.",

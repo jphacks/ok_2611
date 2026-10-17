@@ -32,6 +32,9 @@ class RateLimiter(Protocol):
     def hit(self, rule: RateLimitRule, identifier: str) -> int:
         """カウンターを1増やし、現在のウィンドウ内の回数を返す。"""
 
+    def count(self, rule: RateLimitRule, identifier: str) -> int:
+        """増やさずに現在のウィンドウ内の回数を返す（ログイン失敗の判定用）。"""
+
 
 def _window_key(rule: RateLimitRule, identifier: str, now: float) -> str:
     window = int(now // rule.window_seconds)
@@ -71,6 +74,16 @@ class UpstashRateLimiter:
             raise ApiError(503, "service_unavailable")
         return count
 
+    def count(self, rule: RateLimitRule, identifier: str) -> int:
+        key = _window_key(rule, identifier, self._clock())
+        try:
+            response = self._client.post("/", json=["GET", key])
+            response.raise_for_status()
+            value = response.json()["result"]
+            return 0 if value is None else int(value)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            raise ApiError(503, "service_unavailable") from exc
+
 
 class MemoryRateLimiter:
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
@@ -83,6 +96,11 @@ class MemoryRateLimiter:
         with self._lock:
             self._counts[key] = self._counts.get(key, 0) + 1
             return self._counts[key]
+
+    def count(self, rule: RateLimitRule, identifier: str) -> int:
+        key = _window_key(rule, identifier, self._clock())
+        with self._lock:
+            return self._counts.get(key, 0)
 
 
 _limiters: dict[tuple, RateLimiter] = {}

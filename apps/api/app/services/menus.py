@@ -250,12 +250,23 @@ def list_dishes(client: Client, menu_id: str) -> list[DishRow]:
     ]
 
 
-def list_menu_answers(client: Client, menu_id: str) -> tuple[list[MenuAnswer], list[MenuAnswer]]:
-    """このメニューの確認（最大5件）の回答を、アレルゲン・食事制限に分けて返す。"""
-    sessions = (
+@dataclass(frozen=True)
+class MenuSession:
+    """このメニューの確認1件（回答はAPIの値）。"""
+
+    session_id: str
+    confirmed_at: datetime
+    publish_consent: bool
+    allergens: list[MenuAnswer]
+    dietary: list[MenuAnswer]
+
+
+def list_menu_sessions(client: Client, menu_id: str) -> list[MenuSession]:
+    """このメニューの確認（最大5件）を新しい順（同日時はIDの降順）に返す。"""
+    rows = (
         client.table("confirmation_sessions")
         .select(
-            "created_at,"
+            "id,created_at,publish_consent,"
             "confirmation_answers(dish_id,allergen_id,answer),"
             "confirmation_dietary_answers(dish_id,dietary_restriction_id,answer)"
         )
@@ -263,21 +274,125 @@ def list_menu_answers(client: Client, menu_id: str) -> tuple[list[MenuAnswer], l
         .execute()
         .data
     )
-    allergens: list[MenuAnswer] = []
-    dietary: list[MenuAnswer] = []
-    for session in sessions:
-        confirmed_at = parse_timestamp(session["created_at"])
-        for row in session.get("confirmation_answers") or []:
-            allergens.append(
-                MenuAnswer(row["dish_id"], row["allergen_id"], allergen_answer_from_db(row["answer"]), confirmed_at)
+    sessions = []
+    for row in rows:
+        confirmed_at = parse_timestamp(row["created_at"])
+        sessions.append(
+            MenuSession(
+                session_id=row["id"],
+                confirmed_at=confirmed_at,
+                publish_consent=bool(row["publish_consent"]),
+                allergens=[
+                    MenuAnswer(a["dish_id"], a["allergen_id"], allergen_answer_from_db(a["answer"]), confirmed_at)
+                    for a in row.get("confirmation_answers") or []
+                ],
+                dietary=[
+                    MenuAnswer(
+                        a["dish_id"], a["dietary_restriction_id"], dietary_answer_from_db(a["answer"]), confirmed_at
+                    )
+                    for a in row.get("confirmation_dietary_answers") or []
+                ],
             )
-        for row in session.get("confirmation_dietary_answers") or []:
-            dietary.append(
-                MenuAnswer(
-                    row["dish_id"], row["dietary_restriction_id"], dietary_answer_from_db(row["answer"]), confirmed_at
-                )
+        )
+    return sorted(sessions, key=lambda x: (x.confirmed_at, x.session_id), reverse=True)
+
+
+def list_menu_answers(client: Client, menu_id: str) -> tuple[list[MenuAnswer], list[MenuAnswer]]:
+    """このメニューの確認の回答を、アレルゲン・食事制限に分けて返す。"""
+    sessions = list_menu_sessions(client, menu_id)
+    return (
+        [a for session in sessions for a in session.allergens],
+        [a for session in sessions for a in session.dietary],
+    )
+
+
+# --- 本人履歴（API 16・17）。どのクエリにも必ず account_id = 検証済みの sub を付ける ---
+
+_MENU_COLUMNS = "id,restaurant_id,user_publish_consent,analysis_token_hash,analysis_expires_at"
+
+
+def _menu_row(row: dict) -> MenuRow:
+    restaurant = row.get("restaurants") or {}
+    return MenuRow(
+        id=row["id"],
+        restaurant_id=row["restaurant_id"],
+        google_place_id=restaurant.get("google_place_id"),
+        analysis_token_hash=row["analysis_token_hash"],
+        analysis_expires_at=parse_timestamp(row["analysis_expires_at"]),
+        user_publish_consent=bool(row["user_publish_consent"]),
+    )
+
+
+def get_owned_menu(client: Client, menu_id: str, account_id: str) -> MenuRow | None:
+    """メニューIDと所有者を同じクエリで検証する。他人・ゲスト・存在しないIDは区別しない。"""
+    rows = (
+        client.table("menus")
+        .select(f"{_MENU_COLUMNS},restaurants(google_place_id)")
+        .eq("id", menu_id)
+        .eq("account_id", account_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return _menu_row(rows[0]) if rows else None
+
+
+@dataclass(frozen=True)
+class HistoryRow:
+    menu_id: str
+    google_place_id: str | None
+    scanned_at: datetime
+    scanned_at_raw: str  # カーソル用（DBの値をそのまま使い、精度を落とさない）
+    dish_names: list[str]
+    confirmation_count: int
+    is_public: bool
+
+
+def list_history(
+    client: Client,
+    account_id: str,
+    *,
+    google_place_id: str | None,
+    after: tuple[str, str] | None,
+    limit: int,
+) -> list[HistoryRow]:
+    """`created_at DESC, id DESC`。所有者・店舗・カーソルの条件はANDで付ける。"""
+    restaurants = "restaurants!inner(google_place_id)" if google_place_id else "restaurants(google_place_id)"
+    query = (
+        client.table("menus")
+        .select(
+            f"id,created_at,restaurant_id,user_publish_consent,{restaurants},"
+            "dishes(position,translations),confirmation_sessions(publish_consent)"
+        )
+        .eq("account_id", account_id)
+    )
+    if google_place_id:
+        query = query.eq("restaurants.google_place_id", google_place_id)
+    if after:
+        created_at, menu_id = after
+        query = query.or_(f'created_at.lt."{created_at}",and(created_at.eq."{created_at}",id.lt.{menu_id})')
+    rows = query.order("created_at", desc=True).order("id", desc=True).limit(limit).execute().data
+    result = []
+    for row in rows:
+        dishes = sorted(row.get("dishes") or [], key=lambda d: d["position"])
+        sessions = row.get("confirmation_sessions") or []
+        restaurant = row.get("restaurants") or {}
+        result.append(
+            HistoryRow(
+                menu_id=row["id"],
+                google_place_id=restaurant.get("google_place_id"),
+                scanned_at=parse_timestamp(row["created_at"]),
+                scanned_at_raw=row["created_at"],
+                dish_names=[((d.get("translations") or {}).get("en") or {}).get("name", "") for d in dishes],
+                confirmation_count=len(sessions),
+                is_public=bool(
+                    row["user_publish_consent"]
+                    and row["restaurant_id"] is not None
+                    and any(x["publish_consent"] for x in sessions)
+                ),
             )
-    return allergens, dietary
+        )
+    return result
 
 
 def list_store_allergen_answers(
