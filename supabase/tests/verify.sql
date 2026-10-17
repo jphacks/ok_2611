@@ -167,7 +167,7 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[1/12] schema: tables, columns, RLS, views, functions, triggers, indexes'
+\echo '[1/13] schema: tables, columns, RLS, views, functions, triggers, indexes'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -265,7 +265,7 @@ begin
   perform pg_temp.assert(
     (select array_agg(format('%s(%s)', p.proname, pg_get_function_identity_arguments(p.oid)) order by p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public')
+      where n.nspname = 'public' and p.prorettype <> 'pg_catalog.event_trigger'::regtype)
     = array[
         'complete_confirmation_session(p_menu_id uuid, p_analysis_token_hash text, p_request_id uuid, p_answers jsonb, p_dietary_answers jsonb, p_publish_consent boolean, OUT session_id uuid, OUT confirmed_at timestamp with time zone, OUT replayed boolean)',
         'reject_snapshot_update()',
@@ -279,8 +279,16 @@ begin
 
   perform pg_temp.assert(
     not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                 where n.nspname = 'public' and p.prosecdef),
+                 where n.nspname = 'public' and p.prosecdef and p.prorettype <> 'pg_catalog.event_trigger'::regtype),
     'all functions are security invoker');
+
+  -- Supabaseのプロジェクト設定で作られるイベントトリガー用関数（例：rls_auto_enable）は対象外。
+  -- 直接呼び出せない event_trigger 型だけであることを確認する（ローカルには存在しない）。
+  perform pg_temp.assert(
+    not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname = 'public' and p.prorettype = 'pg_catalog.event_trigger'::regtype
+                   and p.proname not in ('rls_auto_enable')),
+    'only known platform event-trigger functions exist besides ours');
 
   perform pg_temp.assert(
     (select array_agg(format('%s.%s:%s', c.relname, t.tgname, p.proname) order by c.relname, t.tgname)
@@ -371,7 +379,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[2/12] master data: 29 allergens (9 + 20) and 4 dietary restrictions'
+\echo '[2/13] master data: 29 allergens (9 + 20) and 4 dietary restrictions'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -440,7 +448,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[3/12] privileges: PUBLIC/anon/authenticated have nothing, service_role matches spec'
+\echo '[3/13] privileges: PUBLIC/anon/authenticated have nothing, service_role matches spec'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -463,7 +471,8 @@ begin
       format('%s has no sequence privileges', v_role));
     perform pg_temp.assert(
       not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                   where n.nspname = 'public' and has_function_privilege(v_role, p.oid, 'EXECUTE')),
+                   where n.nspname = 'public' and p.prorettype <> 'pg_catalog.event_trigger'::regtype
+                     and has_function_privilege(v_role, p.oid, 'EXECUTE')),
       format('%s cannot execute any public function', v_role));
   end loop;
 
@@ -475,7 +484,7 @@ begin
     'PUBLIC has no relation privileges');
   perform pg_temp.assert(
     not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                 where n.nspname = 'public' and (p.proacl is null
+                 where n.nspname = 'public' and p.prorettype <> 'pg_catalog.event_trigger'::regtype and (p.proacl is null
                    or exists (select 1 from aclexplode(p.proacl) as acl where acl.grantee = 0))),
     'PUBLIC has no function privileges (explicit ACL on every function)');
 
@@ -520,7 +529,7 @@ begin
   perform pg_temp.assert(
     (select array_agg(p.proname::text order by p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and has_function_privilege('service_role', p.oid, 'EXECUTE'))
+      where n.nspname = 'public' and p.prorettype <> 'pg_catalog.event_trigger'::regtype and has_function_privilege('service_role', p.oid, 'EXECUTE'))
     = array['complete_confirmation_session', 'replace_account_allergens', 'replace_account_dietary_restrictions',
             'save_menu_analysis'],
     'service_role executes only the 4 RPCs');
@@ -561,7 +570,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[4/12] save_menu_analysis: normal save, order, defaults, rejection without partial rows'
+\echo '[4/13] save_menu_analysis: normal save, order, defaults, rejection without partial rows'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -682,7 +691,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[5/12] complete_confirmation_session: allergen-only, dietary-only, both, replay, conflicts'
+\echo '[5/13] complete_confirmation_session: allergen-only, dietary-only, both, replay, conflicts'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -803,7 +812,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[6/12] complete_confirmation_session: validation errors leave nothing behind'
+\echo '[6/13] complete_confirmation_session: validation errors leave nothing behind'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -953,7 +962,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[7/12] tokens, expiry, 5-session limit, triggers, immutability, row lock'
+\echo '[7/13] tokens, expiry, 5-session limit, triggers, immutability, row lock'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -1082,7 +1091,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[8/12] public views (guest/non-consent stay private) and storage bucket'
+\echo '[8/13] public views (guest/non-consent stay private) and storage bucket'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -1136,7 +1145,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[9/12] accounts: registration constraints, DB-decided timestamps, column privileges'
+\echo '[9/13] accounts: registration constraints, DB-decided timestamps, column privileges'
 -- ---------------------------------------------------------------------------
 
 create function pg_temp.argon()
@@ -1249,7 +1258,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[10/12] replace_account_allergens / replace_account_dietary_restrictions'
+\echo '[10/13] replace_account_allergens / replace_account_dietary_restrictions'
 -- ---------------------------------------------------------------------------
 
 create function pg_temp.replace_sql(p_kind text, p_account_id uuid, p_ids jsonb)
@@ -1374,7 +1383,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[11/12] owner and consent snapshot on save; publication across 8 combinations'
+\echo '[11/13] owner and consent snapshot on save; publication across 8 combinations'
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -1514,7 +1523,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
-\echo '[12/12] own history queries (README examples): owner condition, store filter, cursor, detail'
+\echo '[12/13] own history queries (README examples): owner condition, store filter, cursor, detail'
 -- ---------------------------------------------------------------------------
 
 -- README「本人履歴の取得」の一覧SQLと同じ条件。結果を jsonb 配列で返す。
@@ -1664,6 +1673,134 @@ begin
       join public.menus m on m.id = s.menu_id
      where s.menu_id = %L and m.account_id = %L$q$, pg_temp.get('m_yes_store'), v_no));
   perform pg_temp.assert(v_result = '[]', 'detail confirmations of another account''s menu are not returned');
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+\echo '[13/13] read scopes: prediction (incl. private), public views, own history'
+-- ---------------------------------------------------------------------------
+
+-- README「予測用の過去回答の取得」と同じ条件
+create function pg_temp.prediction_sql(p_kind text, p_restaurant_id uuid, p_name_key text, p_item_id integer)
+returns text
+language sql
+as $$
+  select case p_kind
+    when 'allergens' then format($f$
+      select coalesce(jsonb_agg(jsonb_build_object('session_id', s.id, 'answer', a.answer)
+                                order by s.created_at desc, s.id), '[]'::jsonb)
+        from public.confirmation_answers a
+        join public.confirmation_sessions s on s.id = a.session_id
+        join public.dishes d on d.id = a.dish_id
+       where s.restaurant_id = %L::uuid
+         and d.name_key = %L
+         and a.allergen_id = %s$f$, p_restaurant_id, p_name_key, p_item_id)
+    else format($f$
+      select coalesce(jsonb_agg(jsonb_build_object('session_id', s.id, 'answer', a.answer)
+                                order by s.created_at desc, s.id), '[]'::jsonb)
+        from public.confirmation_dietary_answers a
+        join public.confirmation_sessions s on s.id = a.session_id
+        join public.dishes d on d.id = a.dish_id
+       where s.restaurant_id = %L::uuid
+         and d.name_key = %L
+         and a.dietary_restriction_id = %s$f$, p_restaurant_id, p_name_key, p_item_id)
+  end;
+$$;
+
+do $$
+declare
+  v_yes uuid := pg_temp.get('acc_yes')::uuid;
+  v_no uuid := pg_temp.get('acc_no')::uuid;
+  v_store uuid;
+  v_other_store uuid;
+  v_case jsonb;
+  v_menu_id uuid;
+  v_dish_id uuid;
+  v_result jsonb;
+  v_sessions jsonb := '{}'::jsonb;
+  v_expected_all jsonb;
+  v_expected_public jsonb;
+begin
+  v_store := (pg_temp.exec_as('service_role',
+    $q$with r as (insert into public.restaurants (google_place_id) values ('verify-place-c') returning id)
+       select to_jsonb(r.id) from r$q$) #>> '{}')::uuid;
+  v_other_store := (pg_temp.exec_as('service_role',
+    $q$with r as (insert into public.restaurants (google_place_id) values ('verify-place-d') returning id)
+       select to_jsonb(r.id) from r$q$) #>> '{}')::uuid;
+
+  -- 同じ店舗・同じ料理名キーに、複数の利用者・ゲスト・同意の組合せで回答を蓄積する。
+  -- 比較対象として、別店舗・別料理・店舗未選択・別項目の回答も作る。
+  for v_case in select * from jsonb_array_elements('[
+      {"key": "p_yes_staff_yes", "store": "c", "owner": "yes", "dish": "Shrimp tempura soba", "staff": true,  "answer": "contains",      "diet": "not_supported"},
+      {"key": "p_no_staff_yes",  "store": "c", "owner": "no",  "dish": "Shrimp tempura soba", "staff": true,  "answer": "not_contains",  "diet": "supported"},
+      {"key": "p_guest_staff_yes","store": "c", "owner": null,  "dish": "Shrimp tempura soba", "staff": true,  "answer": "cross_contact", "diet": "cross_contact"},
+      {"key": "p_yes_staff_no",  "store": "c", "owner": "yes", "dish": "Shrimp tempura soba", "staff": false, "answer": "unknown",       "diet": "unknown"},
+      {"key": "x_other_store",   "store": "d", "owner": "yes", "dish": "Shrimp tempura soba", "staff": true,  "answer": "contains",      "diet": "supported"},
+      {"key": "x_other_dish",    "store": "c", "owner": "yes", "dish": "Kitsune udon",        "staff": true,  "answer": "contains",      "diet": "supported"},
+      {"key": "x_no_store",      "store": null, "owner": "yes", "dish": "Shrimp tempura soba", "staff": true,  "answer": "contains",      "diet": "supported"}
+    ]'::jsonb) loop
+    v_menu_id := (pg_temp.exec_as('service_role', pg_temp.save_sql(
+      case v_case ->> 'store' when 'c' then v_store when 'd' then v_other_store end,
+      'verify/' || (v_case ->> 'key') || '.jpg', pg_temp.h(v_case ->> 'key'),
+      jsonb_build_array(pg_temp.dish(v_case ->> 'dish')), null,
+      case v_case ->> 'owner' when 'yes' then v_yes when 'no' then v_no end)) #>> '{}')::uuid;
+    v_dish_id := pg_temp.dish_id(v_menu_id, 1);
+    -- アレルゲン4（対象）と6（別項目）、食事制限1（対象）と2（別項目）
+    v_result := pg_temp.exec_as('service_role', pg_temp.confirm_sql(
+      v_menu_id, pg_temp.h(v_case ->> 'key'), gen_random_uuid(),
+      jsonb_build_array(
+        jsonb_build_object('dish_id', v_dish_id, 'allergen_id', 4, 'answer', v_case ->> 'answer'),
+        jsonb_build_object('dish_id', v_dish_id, 'allergen_id', 6, 'answer', 'contains')),
+      jsonb_build_array(
+        jsonb_build_object('dish_id', v_dish_id, 'dietary_restriction_id', 1, 'answer', v_case ->> 'diet'),
+        jsonb_build_object('dish_id', v_dish_id, 'dietary_restriction_id', 2, 'answer', 'supported')),
+      (v_case ->> 'staff')::boolean));
+    v_sessions := v_sessions || jsonb_build_object(v_case ->> 'key', v_result ->> 'session_id');
+    perform pg_temp.put('scope_' || (v_case ->> 'key'), v_menu_id::text);
+  end loop;
+
+  -- 予測用：同じ店舗・料理名キー・項目の全回答（非公開・ゲスト・店員不同意を含む）。他は混ぜない
+  v_expected_all := (select jsonb_agg(x order by x) from jsonb_array_elements_text(jsonb_build_array(
+    v_sessions -> 'p_yes_staff_yes', v_sessions -> 'p_no_staff_yes',
+    v_sessions -> 'p_guest_staff_yes', v_sessions -> 'p_yes_staff_no')) as x);
+  v_result := pg_temp.exec_as('service_role', pg_temp.prediction_sql('allergens', v_store, 'shrimptempurasoba', 4));
+  perform pg_temp.assert(
+    (select jsonb_agg(r ->> 'session_id' order by r ->> 'session_id') from jsonb_array_elements(v_result) as r) = v_expected_all
+    and (select jsonb_agg(r ->> 'answer' order by r ->> 'answer') from jsonb_array_elements(v_result) as r)
+        = '["contains", "cross_contact", "not_contains", "unknown"]'::jsonb,
+    format('allergen prediction scope includes private answers only for this store/name_key/item: %s', v_result));
+  v_result := pg_temp.exec_as('service_role', pg_temp.prediction_sql('dietary', v_store, 'shrimptempurasoba', 1));
+  perform pg_temp.assert(
+    (select jsonb_agg(r ->> 'session_id' order by r ->> 'session_id') from jsonb_array_elements(v_result) as r) = v_expected_all
+    and (select jsonb_agg(r ->> 'answer' order by r ->> 'answer') from jsonb_array_elements(v_result) as r)
+        = '["cross_contact", "not_supported", "supported", "unknown"]'::jsonb,
+    format('dietary prediction scope is separate from allergens and other items: %s', v_result));
+
+  -- 公開ビュー：同じ条件でも、店舗あり・利用者同意・店員同意がそろった回答だけ
+  v_expected_public := jsonb_build_array(v_sessions ->> 'p_yes_staff_yes');
+  v_result := pg_temp.exec_as('service_role', format($q$
+    select jsonb_build_object(
+      'answers', (select coalesce(jsonb_agg(distinct p.session_id::text), '[]') from public.published_confirmation_answers p
+                   where p.restaurant_id = %1$L and p.name_key = 'shrimptempurasoba' and p.allergen_id = 4),
+      'dietary', (select coalesce(jsonb_agg(distinct p.session_id::text), '[]') from public.published_dietary_answers p
+                   where p.restaurant_id = %1$L and p.name_key = 'shrimptempurasoba' and p.dietary_restriction_id = 1),
+      'menus', (select count(distinct p.menu_id) from public.published_menus p
+                 where p.restaurant_id = %1$L and p.name_key = 'shrimptempurasoba'))$q$, v_store));
+  perform pg_temp.assert(
+    v_result -> 'answers' = v_expected_public and v_result -> 'dietary' = v_expected_public
+    and (v_result ->> 'menus')::int = 1,
+    format('public views expose only the doubly-consented answer for the same store/name_key: %s', v_result));
+
+  -- 本人履歴：同じ店舗・料理でも他人・ゲストのメニューを含まない
+  v_result := pg_temp.exec_as('service_role', pg_temp.history_sql(v_no, 'verify-place-c', null, null, 50));
+  perform pg_temp.assert(pg_temp.ids(v_result) = jsonb_build_array(pg_temp.get('scope_p_no_staff_yes')),
+    'own history for the same store contains only the owner''s menu');
+  v_result := pg_temp.exec_as('service_role', pg_temp.history_sql(v_yes, 'verify-place-c', null, null, 50));
+  perform pg_temp.assert(
+    (select jsonb_agg(x order by x) from jsonb_array_elements_text(pg_temp.ids(v_result)) as x)
+    = (select jsonb_agg(x order by x) from unnest(array[pg_temp.get('scope_p_yes_staff_yes'), pg_temp.get('scope_p_yes_staff_no'),
+                                                         pg_temp.get('scope_x_other_dish')]) as x),
+    'own history for the same store excludes other users, guests, other stores and no-store menus');
 end;
 $$;
 

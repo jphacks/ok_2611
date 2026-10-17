@@ -1,0 +1,3 @@
+# 03の統合検証（integration.py）の直接依存。動作確認したバージョンは requirements.lock に固定。
+supabase==2.33.0
+psycopg[binary]==3.3.6

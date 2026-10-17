@@ -9,3 +9,7 @@
 
 # Supabase CLI (npm)
 node_modules
+
+# Python venv for tests/
+tests/.venv
+__pycache__
