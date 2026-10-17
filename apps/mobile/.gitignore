@@ -1,0 +1,8 @@
+node_modules/
+.expo/
+dist/
+.env
+
+# Keep local Markdown notes out of Git. The mobile coding guide is the only exception.
+*.md
+!/CLAUDE.md
