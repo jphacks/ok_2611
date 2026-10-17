@@ -1,0 +1,15 @@
+# 実行時の直接依存。固定値は requirements.txt（推移的依存を含む）を正とする。
+fastapi==0.143.3
+pydantic-settings==2.16.0
+supabase==2.33.0
+httpx==0.28.1
+# 03：multipart・画像の検証・Gemini・VLM出力のJSON Schema検証・アカウント用JWTの検証（PyJWTはsupabaseの推移的依存と同じ版）
+python-multipart==0.0.32
+pillow==13.0.0
+google-genai==2.31.0
+jsonschema==4.26.0
+PyJWT==2.15.1
+# 06：パスワードのArgon2id・メールアドレスの検証（dnspython 2.9.0は公開から2週間未満のため2.8.0に固定）
+argon2-cffi==25.1.0
+email-validator==2.3.0
+dnspython==2.8.0

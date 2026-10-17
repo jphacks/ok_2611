@@ -16,7 +16,7 @@ tags:
 security: []
 x-source: ../docs/api.md
 x-specification-notes:
-  - レスポンス例のフィールドは原則requiredとした。price・店舗未選択のgoogle_place_id・store_history・vote_shares・next_cursorはnullを許可。例だけの項目の省略可否は未指定。
+  - レスポンス例のフィールドは原則requiredとした。price・店舗未選択のgoogle_place_id・current_answer・store_history・score・weight・next_cursorはnullを許可。例だけの項目の省略可否は未指定。
   - 不明AIのevidenceは型・空値が明記されていない。全AI variantで文字列（空文字可）として暫定定義し、null・欠落は許可しない。
   - 料理名200文字、Place ID255文字、priceの範囲・桁、currencyの3文字は、APIから参照するDB仕様で補足した。
   - API 6のlocaleは共通の既定enに従い任意と解釈した。GETでのallergen_ids省略時の対象と空クエリ文字列の扱いは詳細に未指定。
@@ -279,7 +279,7 @@ paths:
       operationId: get_nearby_places
       summary: 周辺の飲食店検索
       description: Places API（New）のNearby
-        Searchをサーバー用キーで呼び、飲食店に絞って最大20件を距離順で返す。公開メニュー件数を付与する。店名・座標・住所は保存せず、現在地をログに残さない。IP単位30回/分（初期案）。
+        Searchをサーバー用キーで呼び、飲食店に絞って最大20件を距離順で返す。公開料理数（API 7で表示される料理数＝店舗ごとの異なるname_keyの数）を付与する。店名・座標・住所は保存せず、現在地をログに残さない。IP単位30回/分（初期案）。
       tags:
         - P0
       x-api-number: 3
@@ -308,6 +308,9 @@ paths:
                     has_public_menus: true
                     public_menu_count: 2
                 attribution: Google Maps
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/no_store"
         "422":
           $ref: "#/components/responses/validation_error"
         "429":
@@ -317,9 +320,9 @@ paths:
   /menus/analyze:
     post:
       operationId: analyze_menu
-      summary: 画像解析・メニュー保存・予測
+      summary: 画像解析・メニュー保存・判定
       description: アカウントBearerは任意。なしなら所有者NULL・利用者同意false。送信されたJWTは署名・期限・typ・所有者の存在を検証し、不正なら401（ゲストへ降格しない）。所有者と登録時同意はサーバー側で決め、本文の指定を拒否する。画像検証→Place
-        ID確認→Gemini解析・出力検証→非公開Storage保存→解析結果の原子的保存→予測。選択設定は保存せずVLMにも渡さない。店舗ありなら同じ料理・項目の非公開回答も予測に集計する。DB失敗時は画像を削除。自動再送しない。IP単位5回/分・50回/日（初期案）。
+        ID確認→Gemini解析・出力検証→非公開Storage保存→解析結果の原子的保存→判定。選択設定は保存せずVLMにも渡さない。店舗ありなら同じ料理・項目の非公開回答も履歴の集計に使う。判定はAIの候補・今回の店員回答・店舗の履歴を別々に返し、合成しない。DB失敗時は画像を削除。自動再送しない。IP単位5回/分・50回/日（初期案）。
       tags:
         - P0
       x-api-number: 4
@@ -358,10 +361,10 @@ paths:
                 menu_id: 22222222-2222-4222-8222-222222222222
                 google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
                 analysis_token: <解析用トークン（この応答でだけ返す）>
-                analysis_expires_at: 2026-10-18T03:00:00Z
+                analysis_expires_at: '2026-10-18T03:00:00Z'
                 ai_model: gemini-3.8-flash
                 prompt_version: v4
-                analyzed_at: 2026-10-17T03:00:00Z
+                analyzed_at: '2026-10-17T03:00:00Z'
                 locale: en
                 dishes:
                   - dish_id: 33333333-3333-4333-8333-333333333331
@@ -372,50 +375,65 @@ paths:
                     price: 1200
                     currency: JPY
                     allergens:
-                      - allergen_id: 4
-                        display_name: Shrimp
-                        prediction:
-                          status: contains
-                          basis: ai_and_store_answers
-                          vote_shares:
-                            contains: 1
-                            cross_contact: 0
-                            not_contains: 0
-                        ai:
-                          status: explicit_present
-                          source: menu_text
-                          evidence: 海老天
-                        store_history:
-                          answer_counts:
-                            contains: 2
-                            cross_contact: 0
-                            not_contains: 0
-                            unknown: 0
-                          last_confirmed_at: 2026-10-10T05:00:00Z
-                          has_conflict: false
                       - allergen_id: 6
                         display_name: Buckwheat
-                        prediction:
-                          status: possible
-                          basis: ai_only
-                          vote_shares: null
                         ai:
                           status: possible
                           source: dish_name_inference
                           evidence: Soba noodles are usually made with buckwheat.
+                          weight: null
+                        current_answer: null
                         store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: false
+                          history_shared_utensils: false
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                          weight: null
+                        current_answer: null
+                        store_history:
+                          match_basis: name_key
+                          answer_counts:
+                            contains: 1
+                            shared_utensils: 2
+                            does_not_contain: 3
+                            unknown: 1
+                          last_answered_at:
+                            contains: '2026-10-10T05:00:00Z'
+                            shared_utensils: '2026-10-12T05:00:00Z'
+                            does_not_contain: '2026-10-15T05:00:00Z'
+                            unknown: '2026-10-16T05:00:00Z'
+                          last_confirmed_at: '2026-10-16T05:00:00Z'
+                          alpha: 1.79
+                          beta: 3.512
+                          score: 0.338
+                          has_conflict: true
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: true
+                          history_shared_utensils: true
                     dietary_restrictions:
                       - dietary_restriction_id: 4
                         display_name: No alcohol
-                        prediction:
-                          status: possible
-                          basis: ai_only
-                          vote_shares: null
                         ai:
                           status: possible_conflict
                           source: recipe_inference
                           evidence: The broth seasoning may use cooking sake.
+                          weight: null
+                        current_answer: null
                         store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: false
+                          history_cross_contact: false
           headers:
             Cache-Control:
               $ref: "#/components/headers/no_store"
@@ -440,8 +458,8 @@ paths:
   /menus/{menu_id}:
     get:
       operationId: get_menu
-      summary: 解析・予測結果の再取得
-      description: このメニューの解析用Bearerが必要。対象違いは401、期限切れは410。VLMを再実行せず、過去回答を含む予測だけを再計算する。料理はposition順。生のトークンは返さない。
+      summary: 解析・判定結果の再取得
+      description: このメニューの解析用Bearerが必要。対象違いは401、期限切れは410。VLMを再実行せず、今回の回答と店舗の履歴だけを再計算する。料理はposition順。生のトークンは返さない。
       tags:
         - P0
       x-api-number: 5
@@ -463,10 +481,10 @@ paths:
               example:
                 menu_id: 22222222-2222-4222-8222-222222222222
                 google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
-                analysis_expires_at: 2026-10-18T03:00:00Z
+                analysis_expires_at: '2026-10-18T03:00:00Z'
                 ai_model: gemini-3.8-flash
                 prompt_version: v4
-                analyzed_at: 2026-10-17T03:00:00Z
+                analyzed_at: '2026-10-17T03:00:00Z'
                 locale: en
                 dishes:
                   - dish_id: 33333333-3333-4333-8333-333333333331
@@ -477,50 +495,67 @@ paths:
                     price: 1200
                     currency: JPY
                     allergens:
-                      - allergen_id: 4
-                        display_name: Shrimp
-                        prediction:
-                          status: contains
-                          basis: ai_and_store_answers
-                          vote_shares:
-                            contains: 1
-                            cross_contact: 0
-                            not_contains: 0
-                        ai:
-                          status: explicit_present
-                          source: menu_text
-                          evidence: 海老天
-                        store_history:
-                          answer_counts:
-                            contains: 2
-                            cross_contact: 0
-                            not_contains: 0
-                            unknown: 0
-                          last_confirmed_at: 2026-10-10T05:00:00Z
-                          has_conflict: false
                       - allergen_id: 6
                         display_name: Buckwheat
-                        prediction:
-                          status: possible
-                          basis: ai_only
-                          vote_shares: null
                         ai:
                           status: possible
                           source: dish_name_inference
                           evidence: Soba noodles are usually made with buckwheat.
+                          weight: null
+                        current_answer: null
                         store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: false
+                          history_shared_utensils: false
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                          weight: null
+                        current_answer:
+                          answer: contains
+                          confirmed_at: '2026-10-17T03:10:00Z'
+                        store_history:
+                          match_basis: name_key
+                          answer_counts:
+                            contains: 1
+                            shared_utensils: 2
+                            does_not_contain: 3
+                            unknown: 1
+                          last_answered_at:
+                            contains: '2026-10-10T05:00:00Z'
+                            shared_utensils: '2026-10-12T05:00:00Z'
+                            does_not_contain: '2026-10-15T05:00:00Z'
+                            unknown: '2026-10-16T05:00:00Z'
+                          last_confirmed_at: '2026-10-16T05:00:00Z'
+                          alpha: 1.79
+                          beta: 3.512
+                          score: 0.338
+                          has_conflict: true
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: true
+                          history_shared_utensils: true
                     dietary_restrictions:
                       - dietary_restriction_id: 4
                         display_name: No alcohol
-                        prediction:
-                          status: possible
-                          basis: ai_only
-                          vote_shares: null
                         ai:
                           status: possible_conflict
                           source: recipe_inference
                           evidence: The broth seasoning may use cooking sake.
+                          weight: null
+                        current_answer: null
                         store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: false
+                          history_cross_contact: false
           headers:
             Cache-Control:
               $ref: "#/components/headers/no_store"
@@ -532,11 +567,13 @@ paths:
           $ref: "#/components/responses/analysis_expired"
         "422":
           $ref: "#/components/responses/validation_error"
+        "503":
+          $ref: "#/components/responses/service_unavailable"
   /menus/{menu_id}/confirmations:
     post:
       operationId: create_confirmation
       summary: 店員回答・公開可否の一括保存
-      description: 両回答配列と店員の公開同意を1回のRPCで原子的に保存する。利用者同意は解析時のスナップショットを使う。店舗あり・利用者同意・今回の店員同意がすべてtrueの場合だけ公開。他の確認の同意で今回の回答を公開しない。非公開でも同店舗の予測には集計利用し、店舗未選択は公開・再利用とも不可。同一request_idと同一内容は200、違う内容は409。新規確認は最大5回で、再送判定は上限判定より先。期限切れは再送も410。
+      description: 両回答配列と店員の公開同意を1回のRPCで原子的に保存する。利用者同意は解析時のスナップショットを使う。店舗あり・利用者同意・今回の店員同意がすべてtrueの場合だけ公開。他の確認の同意で今回の回答を公開しない。非公開でも同店舗の履歴の集計には使い、店舗未選択は公開・再利用とも不可。同一request_idと同一内容は200、違う内容は409。新規確認は最大5回で、再送判定は上限判定より先。期限切れは再送も410。
       tags:
         - P0
       x-api-number: 6
@@ -575,7 +612,7 @@ paths:
                 $ref: "#/components/schemas/confirmation_replayed_response"
               example:
                 session_id: 44444444-4444-4444-8444-444444444444
-                confirmed_at: 2026-10-17T03:10:00Z
+                confirmed_at: '2026-10-17T03:10:00Z'
                 publish_consent: true
                 user_publish_consent: true
                 is_public: true
@@ -584,6 +621,21 @@ paths:
                   - dish_id: 33333333-3333-4333-8333-333333333331
                     display_name: Shrimp tempura soba
                     allergens:
+                      - allergen_id: 6
+                        display_name: Buckwheat
+                        answer: shared_utensils
+                        answer_label: Shares cooking utensils (ingredients not confirmed)
+                        ai:
+                          status: possible
+                          source: dish_name_inference
+                          evidence: Soba noodles are usually made with buckwheat.
+                          weight: null
+                        store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: false
+                          history_shared_utensils: false
                       - allergen_id: 4
                         display_name: Shrimp
                         answer: contains
@@ -592,14 +644,29 @@ paths:
                           status: explicit_present
                           source: menu_text
                           evidence: 海老天
-                      - allergen_id: 6
-                        display_name: Buckwheat
-                        answer: cross_contact
-                        answer_label: Cross-contact (not an ingredient, but cooked with shared equipment)
-                        ai:
-                          status: possible
-                          source: dish_name_inference
-                          evidence: Soba noodles are usually made with buckwheat.
+                          weight: null
+                        store_history:
+                          match_basis: name_key
+                          answer_counts:
+                            contains: 1
+                            shared_utensils: 2
+                            does_not_contain: 3
+                            unknown: 1
+                          last_answered_at:
+                            contains: '2026-10-10T05:00:00Z'
+                            shared_utensils: '2026-10-12T05:00:00Z'
+                            does_not_contain: '2026-10-15T05:00:00Z'
+                            unknown: '2026-10-16T05:00:00Z'
+                          last_confirmed_at: '2026-10-16T05:00:00Z'
+                          alpha: 1.79
+                          beta: 3.512
+                          score: 0.338
+                          has_conflict: true
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: true
+                          history_shared_utensils: true
                     dietary_restrictions:
                       - dietary_restriction_id: 4
                         display_name: No alcohol
@@ -609,6 +676,13 @@ paths:
                           status: possible_conflict
                           source: recipe_inference
                           evidence: The broth seasoning may use cooking sake.
+                          weight: null
+                        store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: true
+                          history_conflict: false
+                          history_cross_contact: false
           headers:
             Cache-Control:
               $ref: "#/components/headers/no_store"
@@ -620,7 +694,7 @@ paths:
                 $ref: "#/components/schemas/confirmation_created_response"
               example:
                 session_id: 44444444-4444-4444-8444-444444444444
-                confirmed_at: 2026-10-17T03:10:00Z
+                confirmed_at: '2026-10-17T03:10:00Z'
                 publish_consent: true
                 user_publish_consent: true
                 is_public: true
@@ -629,6 +703,21 @@ paths:
                   - dish_id: 33333333-3333-4333-8333-333333333331
                     display_name: Shrimp tempura soba
                     allergens:
+                      - allergen_id: 6
+                        display_name: Buckwheat
+                        answer: shared_utensils
+                        answer_label: Shares cooking utensils (ingredients not confirmed)
+                        ai:
+                          status: possible
+                          source: dish_name_inference
+                          evidence: Soba noodles are usually made with buckwheat.
+                          weight: null
+                        store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: false
+                          history_shared_utensils: false
                       - allergen_id: 4
                         display_name: Shrimp
                         answer: contains
@@ -637,14 +726,29 @@ paths:
                           status: explicit_present
                           source: menu_text
                           evidence: 海老天
-                      - allergen_id: 6
-                        display_name: Buckwheat
-                        answer: cross_contact
-                        answer_label: Cross-contact (not an ingredient, but cooked with shared equipment)
-                        ai:
-                          status: possible
-                          source: dish_name_inference
-                          evidence: Soba noodles are usually made with buckwheat.
+                          weight: null
+                        store_history:
+                          match_basis: name_key
+                          answer_counts:
+                            contains: 1
+                            shared_utensils: 2
+                            does_not_contain: 3
+                            unknown: 1
+                          last_answered_at:
+                            contains: '2026-10-10T05:00:00Z'
+                            shared_utensils: '2026-10-12T05:00:00Z'
+                            does_not_contain: '2026-10-15T05:00:00Z'
+                            unknown: '2026-10-16T05:00:00Z'
+                          last_confirmed_at: '2026-10-16T05:00:00Z'
+                          alpha: 1.79
+                          beta: 3.512
+                          score: 0.338
+                          has_conflict: true
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: true
+                          history_shared_utensils: true
                     dietary_restrictions:
                       - dietary_restriction_id: 4
                         display_name: No alcohol
@@ -654,6 +758,13 @@ paths:
                           status: possible_conflict
                           source: recipe_inference
                           evidence: The broth seasoning may use cooking sake.
+                          weight: null
+                        store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: true
+                          history_conflict: false
+                          history_cross_contact: false
           headers:
             Cache-Control:
               $ref: "#/components/headers/no_store"
@@ -730,6 +841,8 @@ paths:
                 $ref: "#/components/schemas/public_menus_response"
               example:
                 google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
+                match_basis: name_key
+                staff_answers_verified: false
                 dishes:
                   - name_key: 海老天そば
                     name: 海老天そば
@@ -740,25 +853,31 @@ paths:
                     allergens:
                       - allergen_id: 4
                         display_name: Shrimp
-                        prediction:
-                          status: contains
-                          basis: ai_and_store_answers
-                          vote_shares:
-                            contains: 0.8
-                            cross_contact: 0
-                            not_contains: 0.2
                         ai:
                           status: explicit_present
                           source: menu_text
                           evidence: 海老天
+                          weight: null
                         store_history:
+                          match_basis: name_key
                           answer_counts:
-                            contains: 2
-                            cross_contact: 0
-                            not_contains: 1
-                            unknown: 0
-                          last_confirmed_at: 2026-10-17T03:10:00Z
+                            contains: 1
+                            shared_utensils: 2
+                            does_not_contain: 3
+                            unknown: 1
+                          last_answered_at:
+                            contains: '2026-10-10T05:00:00Z'
+                            shared_utensils: '2026-10-12T05:00:00Z'
+                            does_not_contain: '2026-10-15T05:00:00Z'
+                            unknown: '2026-10-16T05:00:00Z'
+                          last_confirmed_at: '2026-10-16T05:00:00Z'
+                          alpha: 1.79
+                          beta: 3.512
+                          score: 0.338
                           has_conflict: true
+                        notices:
+                          history_conflict: true
+                          history_shared_utensils: true
                     dietary_restrictions: []
           headers:
             Cache-Control:
@@ -961,8 +1080,6 @@ paths:
               $ref: "#/components/headers/no_store"
         "401":
           $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not_found"
         "422":
           $ref: "#/components/responses/validation_error"
   /me/dietary-restrictions:
@@ -1031,8 +1148,6 @@ paths:
               $ref: "#/components/headers/no_store"
         "401":
           $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not_found"
         "422":
           $ref: "#/components/responses/validation_error"
   /me/menus:
@@ -1081,7 +1196,7 @@ paths:
     get:
       operationId: get_my_menu
       summary: 本人のメニュー・個別確認の詳細
-      description: menu_idとaccount_id=JWT.subを同じクエリで検証し、他人・所有者なし・存在しないIDは同じ404。料理内store_historyは他の利用者分を含む予測用集計、confirmationsはこの所有メニューだけの個別回答。画像削除・解析トークン失効後も読めるが、回答追加・トークン再発行・期限延長はできない。
+      description: menu_idとaccount_id=JWT.subを同じクエリで検証し、他人・所有者なし・存在しないIDは同じ404。料理内store_historyは他の利用者分を含む履歴の集計、confirmationsはこの所有メニューだけの個別回答。画像削除・解析トークン失効後も読めるが、回答追加・トークン再発行・期限延長はできない。
       tags:
         - P1
       x-api-number: 17
@@ -1105,7 +1220,7 @@ paths:
                 google_place_id: ChIJN1t_tDeuEmsRUsoyG83frY4
                 ai_model: gemini-3.8-flash
                 prompt_version: v4
-                analyzed_at: 2026-10-17T03:00:00Z
+                analyzed_at: '2026-10-17T03:00:00Z'
                 locale: en
                 dishes:
                   - dish_id: 33333333-3333-4333-8333-333333333331
@@ -1116,61 +1231,93 @@ paths:
                     price: 1200
                     currency: JPY
                     allergens:
-                      - allergen_id: 4
-                        display_name: Shrimp
-                        prediction:
-                          status: contains
-                          basis: ai_and_store_answers
-                          vote_shares:
-                            contains: 1
-                            cross_contact: 0
-                            not_contains: 0
-                        ai:
-                          status: explicit_present
-                          source: menu_text
-                          evidence: 海老天
-                        store_history:
-                          answer_counts:
-                            contains: 2
-                            cross_contact: 0
-                            not_contains: 0
-                            unknown: 0
-                          last_confirmed_at: 2026-10-10T05:00:00Z
-                          has_conflict: false
                       - allergen_id: 6
                         display_name: Buckwheat
-                        prediction:
-                          status: possible
-                          basis: ai_only
-                          vote_shares: null
                         ai:
                           status: possible
                           source: dish_name_inference
                           evidence: Soba noodles are usually made with buckwheat.
+                          weight: null
+                        current_answer: null
                         store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: false
+                          history_shared_utensils: false
+                      - allergen_id: 4
+                        display_name: Shrimp
+                        ai:
+                          status: explicit_present
+                          source: menu_text
+                          evidence: 海老天
+                          weight: null
+                        current_answer:
+                          answer: contains
+                          confirmed_at: '2026-10-17T03:10:00Z'
+                        store_history:
+                          match_basis: name_key
+                          answer_counts:
+                            contains: 1
+                            shared_utensils: 2
+                            does_not_contain: 3
+                            unknown: 1
+                          last_answered_at:
+                            contains: '2026-10-10T05:00:00Z'
+                            shared_utensils: '2026-10-12T05:00:00Z'
+                            does_not_contain: '2026-10-15T05:00:00Z'
+                            unknown: '2026-10-16T05:00:00Z'
+                          last_confirmed_at: '2026-10-16T05:00:00Z'
+                          alpha: 1.79
+                          beta: 3.512
+                          score: 0.338
+                          has_conflict: true
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: true
+                          history_shared_utensils: true
                     dietary_restrictions:
                       - dietary_restriction_id: 4
                         display_name: No alcohol
-                        prediction:
-                          status: possible
-                          basis: ai_only
-                          vote_shares: null
                         ai:
                           status: possible_conflict
                           source: recipe_inference
                           evidence: The broth seasoning may use cooking sake.
+                          weight: null
+                        current_answer: null
                         store_history: null
+                        notices:
+                          ai_staff_mismatch: false
+                          recheck_current_answer: false
+                          history_conflict: false
+                          history_cross_contact: false
                 user_publish_consent: true
                 is_public: true
                 confirmations:
                   - session_id: 44444444-4444-4444-8444-444444444444
-                    confirmed_at: 2026-10-17T03:10:00Z
+                    confirmed_at: '2026-10-17T03:10:00Z'
                     publish_consent: true
                     is_public: true
                     results:
                       - dish_id: 33333333-3333-4333-8333-333333333331
                         display_name: Shrimp tempura soba
                         allergens:
+                          - allergen_id: 6
+                            display_name: Buckwheat
+                            answer: shared_utensils
+                            answer_label: Shares cooking utensils (ingredients not confirmed)
+                            ai:
+                              status: possible
+                              source: dish_name_inference
+                              evidence: Soba noodles are usually made with buckwheat.
+                              weight: null
+                            store_history: null
+                            notices:
+                              ai_staff_mismatch: false
+                              recheck_current_answer: false
+                              history_conflict: false
+                              history_shared_utensils: false
                           - allergen_id: 4
                             display_name: Shrimp
                             answer: contains
@@ -1179,14 +1326,29 @@ paths:
                               status: explicit_present
                               source: menu_text
                               evidence: 海老天
-                          - allergen_id: 6
-                            display_name: Buckwheat
-                            answer: cross_contact
-                            answer_label: Cross-contact (not an ingredient, but cooked with shared equipment)
-                            ai:
-                              status: possible
-                              source: dish_name_inference
-                              evidence: Soba noodles are usually made with buckwheat.
+                              weight: null
+                            store_history:
+                              match_basis: name_key
+                              answer_counts:
+                                contains: 1
+                                shared_utensils: 2
+                                does_not_contain: 3
+                                unknown: 1
+                              last_answered_at:
+                                contains: '2026-10-10T05:00:00Z'
+                                shared_utensils: '2026-10-12T05:00:00Z'
+                                does_not_contain: '2026-10-15T05:00:00Z'
+                                unknown: '2026-10-16T05:00:00Z'
+                              last_confirmed_at: '2026-10-16T05:00:00Z'
+                              alpha: 1.79
+                              beta: 3.512
+                              score: 0.338
+                              has_conflict: true
+                            notices:
+                              ai_staff_mismatch: false
+                              recheck_current_answer: false
+                              history_conflict: true
+                              history_shared_utensils: true
                         dietary_restrictions:
                           - dietary_restriction_id: 4
                             display_name: No alcohol
@@ -1196,6 +1358,13 @@ paths:
                               status: possible_conflict
                               source: recipe_inference
                               evidence: The broth seasoning may use cooking sake.
+                              weight: null
+                            store_history: null
+                            notices:
+                              ai_staff_mismatch: false
+                              recheck_current_answer: true
+                              history_conflict: false
+                              history_cross_contact: false
           headers:
             Cache-Control:
               $ref: "#/components/headers/no_store"
@@ -1243,7 +1412,7 @@ components:
       name: allergen_ids
       in: query
       required: false
-      description: "カンマ区切り（例: allergen_ids=4,6）。multipartの繰り返しフィールドとは異なる。予測対象にだけ使い、保存しない。"
+      description: "カンマ区切り（例: allergen_ids=4,6）。multipartの繰り返しフィールドとは異なる。判定の対象選択にだけ使い、保存しない。"
       schema:
         $ref: "#/components/schemas/allergen_ids"
       style: form
@@ -1255,7 +1424,7 @@ components:
       name: dietary_restriction_ids
       in: query
       required: false
-      description: "カンマ区切り（例: dietary_restriction_ids=1,4）。省略時は食事制限の予測なし。"
+      description: "カンマ区切り（例: dietary_restriction_ids=1,4）。省略時は食事制限の判定なし。"
       schema:
         $ref: "#/components/schemas/dietary_restriction_ids"
       style: form
@@ -1319,7 +1488,7 @@ components:
         default: 300
   headers:
     no_store:
-      description: 解析・確認・アカウント・本人履歴・公開集計はキャッシュしない。
+      description: 解析・確認・アカウント・本人履歴・公開集計・周辺検索はキャッシュしない。
       required: true
       schema:
         type: string
@@ -1721,15 +1890,17 @@ components:
         address:
           type: string
         distance_m:
-          type: number
+          type: integer
           minimum: 0
-          description: 現在地からの距離（m）。整数への丸め規則は未指定。
+          description: 現在地（lat・lng）から店舗の座標までの大圏距離（m）。APIが計算し、整数に四捨五入する。
         has_public_menus:
           type: boolean
+          description: public_menu_countが1以上のときtrue。
         public_menu_count:
           type: integer
           minimum: 0
-      description: 店名・座標・住所はGoogleから都度取得しDBに保存しない。公開件数には非公開のメニューを含めない。
+          description: その店舗でAPI 7に表示される料理の数。published_menusに含まれる、店舗ごとの異なるname_keyの数で、メニュー（撮影した画像）の数ではない。同じ料理が複数のメニュー・利用者で公開されても1件と数える。
+      description: 店名・座標・住所はGoogleから都度取得しDBに保存しない。公開料理数には非公開のメニューの料理を含めない。
     nearby_places_response:
       type: object
       additionalProperties: false
@@ -1742,7 +1913,7 @@ components:
           items:
             $ref: "#/components/schemas/nearby_place"
           minItems: 0
-          description: 距離の昇順。
+          description: distance_mの昇順。同じ距離はgoogle_place_idの昇順。同じPlace IDは1件だけ返す。
           maxItems: 20
         attribution:
           type: string
@@ -1756,6 +1927,7 @@ components:
         - status
         - source
         - evidence
+        - weight
       properties:
         status:
           type: string
@@ -1766,7 +1938,14 @@ components:
             - menu_text
         evidence:
           type: string
-          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+          description: menu_textは対応する原文、推定は推定理由、unavailableは空文字可。
+        weight:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+          description: 根拠の分類ごとの重み (c+1)/(n+2)。nは検証件数、cは含有を確認できた件数。検証データがないMVPでは常にnull（0.5を表示しない）。AIの自己申告の確信度ではない。
     allergen_ai_inferred:
       type: object
       additionalProperties: false
@@ -1774,6 +1953,7 @@ components:
         - status
         - source
         - evidence
+        - weight
       properties:
         status:
           type: string
@@ -1785,7 +1965,14 @@ components:
             - dish_name_inference
         evidence:
           type: string
-          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+          description: menu_textは対応する原文、推定は推定理由、unavailableは空文字可。
+        weight:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+          description: 根拠の分類ごとの重み (c+1)/(n+2)。nは検証件数、cは含有を確認できた件数。検証データがないMVPでは常にnull（0.5を表示しない）。AIの自己申告の確信度ではない。
     allergen_ai_unknown:
       type: object
       additionalProperties: false
@@ -1793,6 +1980,7 @@ components:
         - status
         - source
         - evidence
+        - weight
       properties:
         status:
           type: string
@@ -1803,7 +1991,14 @@ components:
             - unavailable
         evidence:
           type: string
-          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+          description: menu_textは対応する原文、推定は推定理由、unavailableは空文字可。
+        weight:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+          description: 根拠の分類ごとの重み (c+1)/(n+2)。nは検証件数、cは含有を確認できた件数。検証データがないMVPでは常にnull（0.5を表示しない）。AIの自己申告の確信度ではない。
     allergen_ai_assessment:
       oneOf:
         - $ref: "#/components/schemas/allergen_ai_explicit"
@@ -1817,6 +2012,7 @@ components:
         - status
         - source
         - evidence
+        - weight
       properties:
         status:
           type: string
@@ -1827,7 +2023,14 @@ components:
             - menu_text
         evidence:
           type: string
-          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+          description: menu_textは対応する原文、推定は推定理由、unavailableは空文字可。
+        weight:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+          description: 根拠の分類ごとの重み (c+1)/(n+2)。nは検証件数、cは含有を確認できた件数。検証データがないMVPでは常にnull（0.5を表示しない）。AIの自己申告の確信度ではない。
     dietary_ai_inferred:
       type: object
       additionalProperties: false
@@ -1835,6 +2038,7 @@ components:
         - status
         - source
         - evidence
+        - weight
       properties:
         status:
           type: string
@@ -1846,7 +2050,14 @@ components:
             - dish_name_inference
         evidence:
           type: string
-          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+          description: menu_textは対応する原文、推定は推定理由、unavailableは空文字可。
+        weight:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+          description: 根拠の分類ごとの重み (c+1)/(n+2)。nは検証件数、cは含有を確認できた件数。検証データがないMVPでは常にnull（0.5を表示しない）。AIの自己申告の確信度ではない。
     dietary_ai_unknown:
       type: object
       additionalProperties: false
@@ -1854,6 +2065,7 @@ components:
         - status
         - source
         - evidence
+        - weight
       properties:
         status:
           type: string
@@ -1864,7 +2076,14 @@ components:
             - unavailable
         evidence:
           type: string
-          description: menu_textは原文、推定は理由。不明時の表現は未指定のため文字列（空文字可）として定義。
+          description: menu_textは対応する原文、推定は推定理由、unavailableは空文字可。
+        weight:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+          description: 根拠の分類ごとの重み (c+1)/(n+2)。nは検証件数、cは含有を確認できた件数。検証データがないMVPでは常にnull（0.5を表示しない）。AIの自己申告の確信度ではない。
     dietary_ai_assessment:
       oneOf:
         - $ref: "#/components/schemas/dietary_ai_explicit"
@@ -1875,153 +2094,197 @@ components:
       type: string
       enum:
         - contains
-        - cross_contact
-        - not_contains
+        - shared_utensils
+        - does_not_contain
         - unknown
-      description: unknownは明示回答。欠落・nullは未回答として拒否する。
-    allergen_vote_shares:
-      type: object
-      additionalProperties: false
-      required:
-        - contains
-        - cross_contact
-        - not_contains
-      properties:
-        contains:
-          type: number
-          minimum: 0
-          maximum: 1
-          multipleOf: 0.001
-        cross_contact:
-          type: number
-          minimum: 0
-          maximum: 1
-          multipleOf: 0.001
-        not_contains:
-          type: number
-          minimum: 0
-          maximum: 1
-          multipleOf: 0.001
-      description: 小数3桁の重み付き得票割合。確率ではない。丸めにより合計が厳密な1にならない場合がある。
+      description: APIの値。DBの値との対応：contains→contains、shared_utensils→cross_contact、does_not_contain→not_contains、unknown→unknown（変換はAPIで行う）。旧値（not_contains・cross_contact）は422。unknownは明示回答。欠落・nullは未回答として拒否する。does_not_containは原材料についての回答で交差接触がないことを意味しない。shared_utensilsは器具の共有で、原材料への含有は未確認。
     allergen_answer_counts:
       type: object
       additionalProperties: false
       required:
         - contains
-        - cross_contact
-        - not_contains
+        - shared_utensils
+        - does_not_contain
         - unknown
       properties:
         contains:
           type: integer
           minimum: 0
-        cross_contact:
+        shared_utensils:
           type: integer
           minimum: 0
-        not_contains:
+        does_not_contain:
           type: integer
           minimum: 0
         unknown:
           type: integer
           minimum: 0
+    allergen_answer_dates:
+      type: object
+      additionalProperties: false
+      required:
+        - contains
+        - shared_utensils
+        - does_not_contain
+        - unknown
+      properties:
+        contains:
+          oneOf:
+            - $ref: '#/components/schemas/utc_datetime'
+            - type: 'null'
+        shared_utensils:
+          oneOf:
+            - $ref: '#/components/schemas/utc_datetime'
+            - type: 'null'
+        does_not_contain:
+          oneOf:
+            - $ref: '#/components/schemas/utc_datetime'
+            - type: 'null'
+        unknown:
+          oneOf:
+            - $ref: '#/components/schemas/utc_datetime'
+            - type: 'null'
+      description: 4択それぞれの最終回答日時。該当なしはnull。
     allergen_store_history:
       type: object
       additionalProperties: false
       required:
+        - match_basis
         - answer_counts
+        - last_answered_at
         - last_confirmed_at
+        - alpha
+        - beta
+        - score
         - has_conflict
       properties:
+        match_basis:
+          type: string
+          const: name_key
+          description: 同じ店舗・料理名キー・項目IDで照合した暫定の集計（レシピ版による料理の同一性は未確認）。
         answer_counts:
-          $ref: "#/components/schemas/allergen_answer_counts"
+          $ref: '#/components/schemas/allergen_answer_counts'
+        last_answered_at:
+          $ref: '#/components/schemas/allergen_answer_dates'
         last_confirmed_at:
-          $ref: "#/components/schemas/utc_datetime"
+          $ref: '#/components/schemas/utc_datetime'
+        alpha:
+          type: number
+          minimum: 1
+          description: 1 + Σw（contains）。w=2^(-経過日数/STORE_ANSWER_HALF_LIFE_DAYS)。小数3桁。
+        beta:
+          type: number
+          minimum: 1
+          description: 1 + Σw（does_not_contain）。小数3桁。
+        score:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+          description: S=α/(α+β)。contains・does_not_containを明示した回答内の傾向で、全回答に占める割合や含有確率ではない。該当する回答が0件ならnull。小数3桁。
         has_conflict:
           type: boolean
-      description: 同じ店舗・料理名キー・項目IDに限定した集計。unknownも件数と最終日時に含める。両極の回答が混在すればhas_conflict=true。
-    allergen_prediction:
-      oneOf:
-        - type: object
-          additionalProperties: false
-          required:
-            - status
-            - basis
-            - vote_shares
-          properties:
-            status:
-              type: string
-              enum:
-                - contains
-                - possible
-                - unknown
-            basis:
-              type: string
-              const: ai_only
-            vote_shares:
-              type: "null"
-          description: 過去回答なし。AIのみの分類。
-        - type: object
-          additionalProperties: false
-          required:
-            - status
-            - basis
-            - vote_shares
-          properties:
-            status:
-              type: string
-              enum:
-                - contains
-                - possible
-                - unknown
-            basis:
-              type: string
-              const: ai_and_store_answers
-            vote_shares:
-              type: "null"
-          description: 過去回答がunknownのみ。AIの分類を維持し、件数・最終日時には不明回答を含める。
-        - type: object
-          additionalProperties: false
-          required:
-            - status
-            - basis
-            - vote_shares
-          properties:
-            status:
-              type: string
-              enum:
-                - contains
-                - cross_contact
-                - not_contains
-            basis:
-              type: string
-              const: ai_and_store_answers
-            vote_shares:
-              $ref: "#/components/schemas/allergen_vote_shares"
-          description: 有効な過去回答あり。最多票を選び、同率は否定側→交差接触→肯定側の順。
-      description: AI候補と時間減衰する過去回答を組み合わせた予測。得票割合は確率ではない。
+          description: containsとdoes_not_containの回答が両方ある。
+      description: 同じ店舗の回答の集計。同じメニューへの複数回の確認は最新の1件だけを数え、このメニュー自身の最新の回答も含む。shared_utensilsと不明（unknown）はα・βに加えず件数・日時だけ。範囲内の回答が0件、または店舗未選択ならnull。
+    allergen_current_answer:
+      type: object
+      additionalProperties: false
+      required:
+        - answer
+        - confirmed_at
+      properties:
+        answer:
+          $ref: '#/components/schemas/allergen_answer'
+        confirmed_at:
+          $ref: '#/components/schemas/utc_datetime'
+      description: このメニューの確認のうち、その料理・項目に回答した最新のもの。
+    allergen_notices:
+      type: object
+      additionalProperties: false
+      required:
+        - ai_staff_mismatch
+        - recheck_current_answer
+        - history_conflict
+        - history_shared_utensils
+      properties:
+        ai_staff_mismatch:
+          type: boolean
+          description: AIの含有記載（explicit_present）と今回の店員回答 does_not_contain が食い違う。根拠と回答を併記し再確認を案内する。推定の候補や器具共有は数えない。
+        recheck_current_answer:
+          type: boolean
+          description: 今回の回答が unknown。再確認を案内する。
+        history_conflict:
+          type: boolean
+          description: 履歴に contains と does_not_contain が混在する。件数・日時とともに表示する。
+        history_shared_utensils:
+          type: boolean
+          description: 履歴に shared_utensils がある。件数・日時を別に表示する。
+      description: algorithms.md 4章の注意表示に使う判定。該当するものは併記する。安全・食べられるの判定は含まない。
+    public_allergen_notices:
+      type: object
+      additionalProperties: false
+      required:
+        - history_conflict
+        - history_shared_utensils
+      properties:
+        history_conflict:
+          type: boolean
+        history_shared_utensils:
+          type: boolean
+      description: 公開回答の集計に関する注意表示。公開集計には「今回の回答」はない。
     allergen_assessment:
       type: object
       additionalProperties: false
       required:
         - allergen_id
         - display_name
-        - prediction
         - ai
+        - current_answer
         - store_history
+        - notices
       properties:
         allergen_id:
-          $ref: "#/components/schemas/allergen_id"
+          $ref: '#/components/schemas/allergen_id'
         display_name:
           type: string
-        prediction:
-          $ref: "#/components/schemas/allergen_prediction"
         ai:
-          $ref: "#/components/schemas/allergen_ai_assessment"
+          $ref: '#/components/schemas/allergen_ai_assessment'
+        current_answer:
+          oneOf:
+            - $ref: '#/components/schemas/allergen_current_answer'
+            - type: 'null'
+          description: 今回の店員回答。未回答はnull（unknownとは区別する）。API 4では常にnull。
         store_history:
           oneOf:
-            - $ref: "#/components/schemas/allergen_store_history"
-            - type: "null"
-          description: 範囲内の回答が0件ならnull。
+            - $ref: '#/components/schemas/allergen_store_history'
+            - type: 'null'
+        notices:
+          $ref: '#/components/schemas/allergen_notices'
+      description: AIの候補・今回の店員回答・店舗の履歴を別々に返し、一つの値に合成しない。
+    public_allergen_assessment:
+      type: object
+      additionalProperties: false
+      required:
+        - allergen_id
+        - display_name
+        - ai
+        - store_history
+        - notices
+      properties:
+        allergen_id:
+          $ref: '#/components/schemas/allergen_id'
+        display_name:
+          type: string
+        ai:
+          $ref: '#/components/schemas/allergen_ai_assessment'
+        store_history:
+          oneOf:
+            - $ref: '#/components/schemas/allergen_store_history'
+            - type: 'null'
+          description: 公開回答（店舗あり・利用者同意・店員同意）だけの集計。
+        notices:
+          $ref: '#/components/schemas/public_allergen_notices'
     allergen_confirmation_answer:
       type: object
       additionalProperties: false
@@ -2046,9 +2309,11 @@ components:
             - answer
             - answer_label
             - ai
+            - store_history
+            - notices
           properties:
             allergen_id:
-              $ref: "#/components/schemas/allergen_id"
+              $ref: '#/components/schemas/allergen_id'
             display_name:
               type: string
             answer:
@@ -2058,7 +2323,13 @@ components:
               type: string
               const: Contains
             ai:
-              $ref: "#/components/schemas/allergen_ai_assessment"
+              $ref: '#/components/schemas/allergen_ai_assessment'
+            store_history:
+              oneOf:
+                - $ref: '#/components/schemas/allergen_store_history'
+                - type: 'null'
+            notices:
+              $ref: '#/components/schemas/allergen_notices'
         - type: object
           additionalProperties: false
           required:
@@ -2067,19 +2338,27 @@ components:
             - answer
             - answer_label
             - ai
+            - store_history
+            - notices
           properties:
             allergen_id:
-              $ref: "#/components/schemas/allergen_id"
+              $ref: '#/components/schemas/allergen_id'
             display_name:
               type: string
             answer:
               type: string
-              const: cross_contact
+              const: shared_utensils
             answer_label:
               type: string
-              const: Cross-contact (not an ingredient, but cooked with shared equipment)
+              const: Shares cooking utensils (ingredients not confirmed)
             ai:
-              $ref: "#/components/schemas/allergen_ai_assessment"
+              $ref: '#/components/schemas/allergen_ai_assessment'
+            store_history:
+              oneOf:
+                - $ref: '#/components/schemas/allergen_store_history'
+                - type: 'null'
+            notices:
+              $ref: '#/components/schemas/allergen_notices'
         - type: object
           additionalProperties: false
           required:
@@ -2088,19 +2367,27 @@ components:
             - answer
             - answer_label
             - ai
+            - store_history
+            - notices
           properties:
             allergen_id:
-              $ref: "#/components/schemas/allergen_id"
+              $ref: '#/components/schemas/allergen_id'
             display_name:
               type: string
             answer:
               type: string
-              const: not_contains
+              const: does_not_contain
             answer_label:
               type: string
-              const: Does not contain
+              const: Not an ingredient (cross-contact not confirmed)
             ai:
-              $ref: "#/components/schemas/allergen_ai_assessment"
+              $ref: '#/components/schemas/allergen_ai_assessment'
+            store_history:
+              oneOf:
+                - $ref: '#/components/schemas/allergen_store_history'
+                - type: 'null'
+            notices:
+              $ref: '#/components/schemas/allergen_notices'
         - type: object
           additionalProperties: false
           required:
@@ -2109,9 +2396,11 @@ components:
             - answer
             - answer_label
             - ai
+            - store_history
+            - notices
           properties:
             allergen_id:
-              $ref: "#/components/schemas/allergen_id"
+              $ref: '#/components/schemas/allergen_id'
             display_name:
               type: string
             answer:
@@ -2121,7 +2410,14 @@ components:
               type: string
               const: Unknown
             ai:
-              $ref: "#/components/schemas/allergen_ai_assessment"
+              $ref: '#/components/schemas/allergen_ai_assessment'
+            store_history:
+              oneOf:
+                - $ref: '#/components/schemas/allergen_store_history'
+                - type: 'null'
+            notices:
+              $ref: '#/components/schemas/allergen_notices'
+      description: 今回の店員回答（APIの値と英語ラベル）とAIの候補を分けて返す。store_historyは保存後の集計で今回の回答を含む。
     dietary_answer:
       type: string
       enum:
@@ -2130,30 +2426,6 @@ components:
         - supported
         - unknown
       description: unknownは明示回答。欠落・nullは未回答として拒否する。
-    dietary_vote_shares:
-      type: object
-      additionalProperties: false
-      required:
-        - not_supported
-        - cross_contact
-        - supported
-      properties:
-        not_supported:
-          type: number
-          minimum: 0
-          maximum: 1
-          multipleOf: 0.001
-        cross_contact:
-          type: number
-          minimum: 0
-          maximum: 1
-          multipleOf: 0.001
-        supported:
-          type: number
-          minimum: 0
-          maximum: 1
-          multipleOf: 0.001
-      description: 小数3桁の重み付き得票割合。確率ではない。丸めにより合計が厳密な1にならない場合がある。
     dietary_answer_counts:
       type: object
       additionalProperties: false
@@ -2175,104 +2447,170 @@ components:
         unknown:
           type: integer
           minimum: 0
+    dietary_answer_dates:
+      type: object
+      additionalProperties: false
+      required:
+        - not_supported
+        - cross_contact
+        - supported
+        - unknown
+      properties:
+        not_supported:
+          oneOf:
+            - $ref: '#/components/schemas/utc_datetime'
+            - type: 'null'
+        cross_contact:
+          oneOf:
+            - $ref: '#/components/schemas/utc_datetime'
+            - type: 'null'
+        supported:
+          oneOf:
+            - $ref: '#/components/schemas/utc_datetime'
+            - type: 'null'
+        unknown:
+          oneOf:
+            - $ref: '#/components/schemas/utc_datetime'
+            - type: 'null'
+      description: 4択それぞれの最終回答日時。該当なしはnull。
     dietary_store_history:
       type: object
       additionalProperties: false
       required:
+        - match_basis
         - answer_counts
+        - last_answered_at
         - last_confirmed_at
+        - alpha
+        - beta
+        - score
         - has_conflict
       properties:
+        match_basis:
+          type: string
+          const: name_key
+          description: 同じ店舗・料理名キー・項目IDで照合した暫定の集計（レシピ版による料理の同一性は未確認）。
         answer_counts:
-          $ref: "#/components/schemas/dietary_answer_counts"
+          $ref: '#/components/schemas/dietary_answer_counts'
+        last_answered_at:
+          $ref: '#/components/schemas/dietary_answer_dates'
         last_confirmed_at:
-          $ref: "#/components/schemas/utc_datetime"
+          $ref: '#/components/schemas/utc_datetime'
+        alpha:
+          type: number
+          minimum: 1
+          description: 1 + Σw（not_supported）。w=2^(-経過日数/STORE_ANSWER_HALF_LIFE_DAYS)。小数3桁。
+        beta:
+          type: number
+          minimum: 1
+          description: 1 + Σw（supported）。小数3桁。
+        score:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+          description: S=α/(α+β)。not_supported・supportedを明示した回答内の傾向で、全回答に占める割合や含有確率ではない。該当する回答が0件ならnull。小数3桁。
         has_conflict:
           type: boolean
-      description: 同じ店舗・料理名キー・項目IDに限定した集計。unknownも件数と最終日時に含める。両極の回答が混在すればhas_conflict=true。
-    dietary_prediction:
-      oneOf:
-        - type: object
-          additionalProperties: false
-          required:
-            - status
-            - basis
-            - vote_shares
-          properties:
-            status:
-              type: string
-              enum:
-                - not_supported
-                - possible
-                - unknown
-            basis:
-              type: string
-              const: ai_only
-            vote_shares:
-              type: "null"
-          description: 過去回答なし。AIのみの分類。
-        - type: object
-          additionalProperties: false
-          required:
-            - status
-            - basis
-            - vote_shares
-          properties:
-            status:
-              type: string
-              enum:
-                - not_supported
-                - possible
-                - unknown
-            basis:
-              type: string
-              const: ai_and_store_answers
-            vote_shares:
-              type: "null"
-          description: 過去回答がunknownのみ。AIの分類を維持し、件数・最終日時には不明回答を含める。
-        - type: object
-          additionalProperties: false
-          required:
-            - status
-            - basis
-            - vote_shares
-          properties:
-            status:
-              type: string
-              enum:
-                - not_supported
-                - cross_contact
-                - supported
-            basis:
-              type: string
-              const: ai_and_store_answers
-            vote_shares:
-              $ref: "#/components/schemas/dietary_vote_shares"
-          description: 有効な過去回答あり。最多票を選び、同率は否定側→交差接触→肯定側の順。
-      description: AI候補と時間減衰する過去回答を組み合わせた予測。得票割合は確率ではない。
+          description: not_supportedとsupportedの回答が両方ある。
+      description: 同じ店舗の回答の集計。同じメニューへの複数回の確認は最新の1件だけを数え、このメニュー自身の最新の回答も含む。cross_contactと不明（unknown）はα・βに加えず件数・日時だけ。範囲内の回答が0件、または店舗未選択ならnull。
+    dietary_current_answer:
+      type: object
+      additionalProperties: false
+      required:
+        - answer
+        - confirmed_at
+      properties:
+        answer:
+          $ref: '#/components/schemas/dietary_answer'
+        confirmed_at:
+          $ref: '#/components/schemas/utc_datetime'
+      description: このメニューの確認のうち、その料理・項目に回答した最新のもの。
+    dietary_notices:
+      type: object
+      additionalProperties: false
+      required:
+        - ai_staff_mismatch
+        - recheck_current_answer
+        - history_conflict
+        - history_cross_contact
+      properties:
+        ai_staff_mismatch:
+          type: boolean
+          description: AIの抵触の記載（explicit_conflict）と今回の supported が食い違う。
+        recheck_current_answer:
+          type: boolean
+          description: 今回の回答が unknown。
+        history_conflict:
+          type: boolean
+          description: 履歴に not_supported と supported が混在する。
+        history_cross_contact:
+          type: boolean
+          description: 履歴に cross_contact がある。
+    public_dietary_notices:
+      type: object
+      additionalProperties: false
+      required:
+        - history_conflict
+        - history_cross_contact
+      properties:
+        history_conflict:
+          type: boolean
+        history_cross_contact:
+          type: boolean
     dietary_assessment:
       type: object
       additionalProperties: false
       required:
         - dietary_restriction_id
         - display_name
-        - prediction
         - ai
+        - current_answer
         - store_history
+        - notices
       properties:
         dietary_restriction_id:
-          $ref: "#/components/schemas/dietary_restriction_id"
+          $ref: '#/components/schemas/dietary_restriction_id'
         display_name:
           type: string
-        prediction:
-          $ref: "#/components/schemas/dietary_prediction"
         ai:
-          $ref: "#/components/schemas/dietary_ai_assessment"
+          $ref: '#/components/schemas/dietary_ai_assessment'
+        current_answer:
+          oneOf:
+            - $ref: '#/components/schemas/dietary_current_answer'
+            - type: 'null'
+          description: 今回の店員回答。未回答はnull（unknownとは区別する）。API 4では常にnull。
         store_history:
           oneOf:
-            - $ref: "#/components/schemas/dietary_store_history"
-            - type: "null"
-          description: 範囲内の回答が0件ならnull。
+            - $ref: '#/components/schemas/dietary_store_history'
+            - type: 'null'
+        notices:
+          $ref: '#/components/schemas/dietary_notices'
+      description: AIの候補・今回の店員回答・店舗の履歴を別々に返し、一つの値に合成しない。
+    public_dietary_assessment:
+      type: object
+      additionalProperties: false
+      required:
+        - dietary_restriction_id
+        - display_name
+        - ai
+        - store_history
+        - notices
+      properties:
+        dietary_restriction_id:
+          $ref: '#/components/schemas/dietary_restriction_id'
+        display_name:
+          type: string
+        ai:
+          $ref: '#/components/schemas/dietary_ai_assessment'
+        store_history:
+          oneOf:
+            - $ref: '#/components/schemas/dietary_store_history'
+            - type: 'null'
+          description: 公開回答（店舗あり・利用者同意・店員同意）だけの集計。
+        notices:
+          $ref: '#/components/schemas/public_dietary_notices'
     dietary_confirmation_answer:
       type: object
       additionalProperties: false
@@ -2297,9 +2635,11 @@ components:
             - answer
             - answer_label
             - ai
+            - store_history
+            - notices
           properties:
             dietary_restriction_id:
-              $ref: "#/components/schemas/dietary_restriction_id"
+              $ref: '#/components/schemas/dietary_restriction_id'
             display_name:
               type: string
             answer:
@@ -2309,7 +2649,13 @@ components:
               type: string
               const: Not supported
             ai:
-              $ref: "#/components/schemas/dietary_ai_assessment"
+              $ref: '#/components/schemas/dietary_ai_assessment'
+            store_history:
+              oneOf:
+                - $ref: '#/components/schemas/dietary_store_history'
+                - type: 'null'
+            notices:
+              $ref: '#/components/schemas/dietary_notices'
         - type: object
           additionalProperties: false
           required:
@@ -2318,9 +2664,11 @@ components:
             - answer
             - answer_label
             - ai
+            - store_history
+            - notices
           properties:
             dietary_restriction_id:
-              $ref: "#/components/schemas/dietary_restriction_id"
+              $ref: '#/components/schemas/dietary_restriction_id'
             display_name:
               type: string
             answer:
@@ -2330,7 +2678,13 @@ components:
               type: string
               const: Cross-contact
             ai:
-              $ref: "#/components/schemas/dietary_ai_assessment"
+              $ref: '#/components/schemas/dietary_ai_assessment'
+            store_history:
+              oneOf:
+                - $ref: '#/components/schemas/dietary_store_history'
+                - type: 'null'
+            notices:
+              $ref: '#/components/schemas/dietary_notices'
         - type: object
           additionalProperties: false
           required:
@@ -2339,9 +2693,11 @@ components:
             - answer
             - answer_label
             - ai
+            - store_history
+            - notices
           properties:
             dietary_restriction_id:
-              $ref: "#/components/schemas/dietary_restriction_id"
+              $ref: '#/components/schemas/dietary_restriction_id'
             display_name:
               type: string
             answer:
@@ -2351,7 +2707,13 @@ components:
               type: string
               const: Supported (staff answer)
             ai:
-              $ref: "#/components/schemas/dietary_ai_assessment"
+              $ref: '#/components/schemas/dietary_ai_assessment'
+            store_history:
+              oneOf:
+                - $ref: '#/components/schemas/dietary_store_history'
+                - type: 'null'
+            notices:
+              $ref: '#/components/schemas/dietary_notices'
         - type: object
           additionalProperties: false
           required:
@@ -2360,9 +2722,11 @@ components:
             - answer
             - answer_label
             - ai
+            - store_history
+            - notices
           properties:
             dietary_restriction_id:
-              $ref: "#/components/schemas/dietary_restriction_id"
+              $ref: '#/components/schemas/dietary_restriction_id'
             display_name:
               type: string
             answer:
@@ -2372,7 +2736,14 @@ components:
               type: string
               const: Unknown
             ai:
-              $ref: "#/components/schemas/dietary_ai_assessment"
+              $ref: '#/components/schemas/dietary_ai_assessment'
+            store_history:
+              oneOf:
+                - $ref: '#/components/schemas/dietary_store_history'
+                - type: 'null'
+            notices:
+              $ref: '#/components/schemas/dietary_notices'
+      description: 今回の店員回答（APIの値と英語ラベル）とAIの候補を分けて返す。store_historyは保存後の集計で今回の回答を含む。
     dish_price:
       type:
         - number
@@ -2468,13 +2839,13 @@ components:
         allergens:
           type: array
           items:
-            $ref: "#/components/schemas/allergen_assessment"
+            $ref: "#/components/schemas/public_allergen_assessment"
           minItems: 0
           maxItems: 29
         dietary_restrictions:
           type: array
           items:
-            $ref: "#/components/schemas/dietary_assessment"
+            $ref: "#/components/schemas/public_dietary_assessment"
           minItems: 0
           maxItems: 4
       description: 同店舗の同名キーを1件にまとめた公開料理。個別のmenu_id・dish_id・session_idや所有者・画像・トークンは返さない。
@@ -2490,10 +2861,10 @@ components:
           $ref: "#/components/schemas/google_place_id"
         allergen_ids:
           $ref: "#/components/schemas/allergen_ids"
-          description: 同名のmultipartフィールドを繰り返す。省略時はAIの候補を予測対象にする。カンマ区切りやJSON文字列ではない。
+          description: 同名のmultipartフィールドを繰り返す。省略時はAIの候補を判定の対象にする。カンマ区切りやJSON文字列ではない。
         dietary_restriction_ids:
           $ref: "#/components/schemas/dietary_restriction_ids"
-          description: 同名のmultipartフィールドを繰り返す。省略時は食事制限の予測なし。
+          description: 同名のmultipartフィールドを繰り返す。省略時は食事制限の判定なし。
         locale:
           $ref: "#/components/schemas/locale"
     analyze_response:
@@ -2825,16 +3196,27 @@ components:
       additionalProperties: false
       required:
         - google_place_id
+        - match_basis
+        - staff_answers_verified
         - dishes
       properties:
         google_place_id:
-          $ref: "#/components/schemas/google_place_id"
+          $ref: '#/components/schemas/google_place_id'
+        match_basis:
+          type: string
+          const: name_key
+          description: 同じ店舗の料理名キーで照合した暫定の集計。
+        staff_answers_verified:
+          type: boolean
+          const: false
+          description: 店員の回答は利用者の端末で入力された未認証のもの。店舗関係者か確認していない（MVPでは除外できない）。
         dishes:
           type: array
           items:
-            $ref: "#/components/schemas/public_dish"
+            $ref: '#/components/schemas/public_dish'
           minItems: 0
           description: 店舗・name_keyごとに1料理。代表料理の撮影日時降順、同日時はname_key順。空配列可。店舗全体の件数上限は未指定（1撮影20料理の上限を適用しない）。
+      description: 公開ビューだけの集計。所有者・menu_id・dish_id・session_id・個別の確認・画像・トークン・本人設定は返さない。
     email:
       type: string
       format: email

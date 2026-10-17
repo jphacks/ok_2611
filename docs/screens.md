@@ -18,11 +18,11 @@
 | ⑧ このお店ですか | `/places/select` | 現在地からの店舗候補、または⑦で選んだ店舗を確認。`Confirm`／`Skip` → ⑨ |
 | ⑨ カメラ | `/capture` | 撮影・画像選択 → ⑩。この時点では解析APIへ送信しない |
 | ⑩ 撮影確認 | `/capture/preview` | 画像と選択店舗を確認。`Retake` → ⑨、`Analyze` → 解析中 → 成功時に⑪ |
-| ⑪ 解析結果（1回目） | `/menu?id=<menu_id>` | 料理名・価格・予測を一覧表示。料理 → ⑫、`Retake` → ⑨ |
-| ⑫ 料理詳細シート | `/menu` 上のシート | AIによる説明・原材料候補・予測の内訳。`Close` → 開いていた⑪／⑪′、`Ask staff` → ⑬ |
+| ⑪ 解析結果（1回目） | `/menu?id=<menu_id>` | 料理名・価格・AIの候補と店員回答・履歴の要約を一覧表示。料理 → ⑫、`Retake` → ⑨ |
+| ⑫ 料理詳細シート | `/menu` 上のシート | AIによる説明・原材料候補・根拠、今回の回答、履歴の件数・日時。`Close` → 開いていた⑪／⑪′、`Ask staff` → ⑬ |
 | ⑬ 店員確認 | `/confirm?id=<menu_id>` | 日本語で料理×対象項目の回答を入力。全問に答えて「回答を終える」→ ⑭。まだ保存しない |
 | ⑭ 学習への同意 | `/confirm/consent?id=<menu_id>` | 店員が同意する／同意しないを選ぶ。回答と公開可否を一括保存し、成功時に⑮ |
-| ⑮ 確認結果 | `/result?id=<session_id>` | 保存された店員の回答とAIの予測を分けて表示。戻る → ⑪′ |
+| ⑮ 確認結果 | `/result?id=<session_id>` | 保存された店員の回答とAIの候補を分けて表示。戻る → ⑪′ |
 | ⑪′ 解析結果（2回目以降） | `/menu?id=<menu_id>` | 同じメニューの一覧を店員確認後の状態で表示。確認済みの料理 → ⑮、他の料理 → ⑫、`Retake` → ⑨ |
 | ⑯ プロフィール | `/profiles` | 本人情報（P1）と選択中の設定を表示。`Change` → ⑰、`My scans` → 本人履歴。同行者・ゲストも選択可能 |
 | ⑰ 食材の編集 | `/profiles/edit` | 選択中のプロファイルの29品目・食事制限4種を編集。`Save changes` 成功 → ⑯（実装案） |
@@ -55,26 +55,33 @@
 
 ⑮の状態を失った本人は、履歴から対象メニューを選び確認結果を再取得する。session_idだけの取得APIは設けない。ゲスト・所有メニューを特定できない直リンクは、メニューとトークンがあれば解析一覧、なければ⑧へ案内する。過去回答の集計を個別回答として代用しない。
 
-## 予測の表示
+## 判定の表示
 
-| 予測（`prediction.status`） | 表示（英語の例） | 補足 |
+[API仕様の判定アルゴリズム](api.md#判定アルゴリズム)（表示ルール）に従い、料理×項目ごとに **AIの候補・今回の店員回答・過去の店員回答（履歴）** を別々に表示する。一つの値に合成した「予測」や「安全」「食べられる」の判定は表示しない。APIの項目は `ai`・`current_answer`・`store_history`・`notices`（[API仕様の判定アルゴリズム](api.md#判定アルゴリズム)）。
+
+| 区分 | 状況 | 表示（英語の例） |
 |---|---|---|
-| `contains` | Likely contains | AIの明記、または過去の店員確認で「含まれる」が多い |
-| `cross_contact` | Possible cross-contact | 過去の店員確認で「交差接触」が多い |
-| `not_contains` | Staff previously said "does not contain" | 「安全」とは表示しない。件数と最終確認日時を必ず併記する |
-| `possible` | May contain (AI estimate) | AIの推定。記載の原材料からか、料理名からかを示す |
-| `unknown` | Unknown | 情報がない。「含まれない」とは表示しない |
-| `has_conflict=true` | Staff answers differ — please ask again | 予測より優先して表示する |
+| AI | `ai.status=explicit_present`（メニューに記載） | Listed on the menu: 「原文」 |
+| AI | `ai.status=possible`（参照レシピ・料理名からの推定） | May contain (AI estimate) と推定理由。参照レシピはその店舗のレシピではないことを示す |
+| AI | `ai.status=unknown` | No information from the menu. 「含まれない」とは表示しない |
+| 今回の回答 | `current_answer.answer=contains` | Staff answer: contains（日時） |
+| 今回の回答 | `does_not_contain` | Staff answer: not an ingredient（日時）。Cross-contact was not confirmed. |
+| 今回の回答 | `shared_utensils` | Staff answer: shares cooking utensils（日時）。Whether it is an ingredient was not confirmed. |
+| 今回の回答 | `unknown` | Staff answer: unknown（日時）と再確認の案内 |
+| 今回の回答 | `current_answer=null` | Not answered |
+| 注意 | `notices.ai_staff_mismatch` | 根拠と回答を併記し「The menu and the staff answer differ — please ask again.」 |
+| 注意 | `notices.history_conflict` | 「Past staff answers differ」と件数・日時 |
+| 注意 | `notices.history_shared_utensils` | 「Shared utensils reported before」と件数・日時を別表示 |
 
-- 不明回答しかない場合は「Staff answers are unknown」と件数を示し、AIの分類を維持する。
-- 予測の根拠（`basis`）を必ず示す：「AI only」または「AI + N staff confirmations (last: 日付)」。
-- アレルゲンの一覧では、利用者のアレルゲンのうち最も注意が必要な予測（`has_conflict` → `contains` → `cross_contact` → `possible` → `unknown` → `not_contains` の順）を料理の目印にする。
-- 予測で料理を隠したり、店員確認の対象から外したりしない。⑪／⑪′では「今回の端末で回答を受け取った確認済み料理」と「その他の料理」を分け、各区画内は元のメニュー順にする。過去回答の集計だけで今回の確認済みにしない。
-- 予測一覧の上部に「Estimates only. Always confirm with restaurant staff.」を常に表示する。
+- 履歴（`store_history`）は4択すべての件数・最終日時を優先して表示する。`score`（S）は「含まれる」「含まれない」を明示した回答内の傾向であり、含有確率・安全度として表示しない。表示する場合は件数と併記する。
+- 履歴は同じ店舗・料理名（`match_basis=name_key`）による暫定の照合で、店員の回答は未認証であることを示す。過去の状態を今回の調理へ自動適用しない。
+- AIの重み（`ai.weight`）はMVPでは常にnull。数値の代わりに根拠の原文・推定理由を表示する。
+- 判定で料理を隠したり、店員確認の対象から外したりしない。⑪／⑪′では「今回の端末で回答を受け取った確認済み料理」と「その他の料理」を分け、各区画内は元のメニュー順にする。過去回答の集計だけで今回の確認済みにしない。
+- 一覧の上部に「Estimates only. Always confirm with restaurant staff.」を常に表示する。
 
-### 食事制限の予測表示
+### 食事制限の表示
 
-食事制限はアレルゲンとは別欄に表示する。`not_supported` は「May not meet your dietary preference」、`cross_contact` は「Possible cross-contact」、`supported` は「Staff previously reported support」、`possible` は「Possible conflict」、`unknown` は「Unknown」とする。過去回答の件数・最終日時を併記し、回答の不一致を優先する。食事制限のみでも目印を表示し、`has_conflict` → `not_supported` → `cross_contact` → `possible` → `unknown` → `supported` の順を使う。両種を設定した場合も別欄で表示し、片方の情報を隠さない。
+食事制限はアレルゲンとは別欄に、同じ区分で表示する。AIは `explicit_conflict`（Listed on the menu）／`possible_conflict`（Possible conflict (AI estimate)）／`unknown`。店員回答は `not_supported`（Not supported）・`supported`（Supported (staff answer)）・`cross_contact`（Cross-contact）・`unknown`（Unknown）。注意は `ai_staff_mismatch`（AIの抵触の記載と「対応している」）・`history_conflict`・`history_cross_contact`。「対応している」も安全性や認証の保証として表示しない。両種を設定した場合も別欄で表示し、片方の情報を隠さない。
 
 Vegan／Vegetarian／Halal／No alcoholの対象条件は [食事制限マスタ](database.md#dietary-master) を使う。図中の「Unlikely」「None of your allergens found」「look OK」「Not safe for you」はそのまま採用せず、根拠と不明点・店員への再確認を示す。②の言語表示は「English」で固定し、言語切替のボタンにはしない。利用条件の確認とブラウザの位置情報の許可は別に扱う。
 
@@ -85,22 +92,22 @@ Vegan／Vegetarian／Halal／No alcoholの対象条件は [食事制限マスタ
 | 表示言語 | ⑬・⑭は日本語（料理名は原文） |
 | 冒頭 | 選択内容に応じてアレルギー・食事制限の確認であること、対象料理、回答済み数／総数を表示 |
 | 質問 | 料理ごとに対象項目を並べる。アレルゲンは「この料理に〇〇は含まれますか？」。食事制限はマスタの条件を説明し「この条件に対応していますか？」 |
-| アレルゲンの4択 | 「ある」（`contains`）、「ない」（`not_contains`）、「コンタミネーション」（`cross_contact`）、「分からない」（`unknown`）。共用器具による交差接触の説明を添える |
-| 食事制限の4択 | 「対応できない」（`not_supported`）、「対応している」（`supported`）、「共用器具による交差接触」（`cross_contact`）、「分からない」（`unknown`） |
+| アレルゲンの4択 | 「含まれる」（`contains`）、「同じ料理器具を使っている」（`shared_utensils`）、「含まれない」（`does_not_contain`）、「わからない」（`unknown`）の順に並べ、単一選択とする。選択順の案内：原材料への含有を確認できる→「含まれる」、それ以外で対象を使う別の料理と器具を共有している→「同じ料理器具を使っている」、それ以外で原材料に使っていないと確認できる→「含まれない」、いずれも確認できない→「わからない」。原材料には含まれないが器具を共有している場合は「同じ料理器具を使っている」を選ぶ |
+| 食事制限の4択 | 「対応できない」（`not_supported`）、「共用器具による交差接触」（`cross_contact`）、「対応している」（`supported`）、「わからない」（`unknown`）の順。選択順の案内はアレルゲンと同じ考え方（対応できない→器具共有→対応している→わからない） |
 | 操作 | 全項目は初期選択なし。画面内で回答を変更でき、複数料理は料理ごとに確認する。「分からない」も回答済みに数える。未回答がある間は「回答を終える」を無効にする |
-| ⑭の同意 | ⑬から下書きを引き継ぐ。「このメニュー情報と回答を地図で公開してもよいですか？」に、店員が「同意する／同意しない」を選ぶ。利用者同意は③で取得済みとし、ここでは再度求めない。双方同意と店舗選択がある場合に公開し、不同意でも同店舗の予測用集計には使うことを説明する。 |
+| ⑭の同意 | ⑬から下書きを引き継ぐ。「このメニュー情報と回答を地図で公開してもよいですか？」に、店員が「同意する／同意しない」を選ぶ。利用者同意は③で取得済みとし、ここでは再度求めない。双方同意と店舗選択がある場合に公開し、不同意でも同店舗の履歴の集計（非公開）には使うことを説明する。 |
 | 確定 | ⑭の選択で回答と公開可否を一括送信する。送信中は両ボタンを無効化し、成功後に「お客様に端末をお返しください」→⑮。失敗時は⑭に留まり同じ内容・`request_id` で再送する |
 | 店舗未選択のとき | 公開可否の質問は表示するが、「店舗が選ばれていないため公開されません」と添える |
 
 - 料理×（選択アレルゲン＋食事制限）は最大50問・10料理。全29＋4種なら1料理33問、2料理66問となる。超過時は料理数を減らすよう案内し、項目を黙って省略しない。
-- カードには、利用者のプロファイル名・アカウント情報・AIの予測を表示しない。店員の回答がAIの予測に引きずられないようにする。
+- カードには、利用者のプロファイル名・アカウント情報・AIの候補を表示しない。店員の回答がAIの候補に引きずられないようにする。
 - 下書きは画面内だけに保持し、途中で閉じたら破棄する。開き直しは新しい `request_id` で開始する。ただし送信後に結果不明なら元の内容・IDで再送する。
 
 ## 確認結果の表示
 
-- 料理×対象項目ごとに店員の回答を英語で示し、AIの予測と分ける。アレルゲンの `unknown` は「Unknown」、食事制限の回答は「Not supported／Supported (staff answer)／Cross-contact／Unknown」とする。対応可の回答も安全性や認証の保証にはしない。
-- AIの予測と店員の回答が異なる場合（例：AIは「含まれる（明記）」、店員は「含まれない」）、両方を示して再確認を促す。
-- 「交差接触」の場合は、「Not used as an ingredient, but shared equipment is used.」と説明する。
+- 料理×対象項目ごとに店員の回答をAPIの `answer_label` で英語表示し、AIの候補と分ける。アレルゲンは「Contains／Shares cooking utensils (ingredients not confirmed)／Not an ingredient (cross-contact not confirmed)／Unknown」、食事制限は「Not supported／Cross-contact／Supported (staff answer)／Unknown」。対応可の回答も安全性や認証の保証にはしない。
+- `notices.ai_staff_mismatch`（例：AIはメニューの記載で「含まれる」、店員は「含まれない」）の場合、両方を示して再確認を促す。AIの含有候補と「同じ料理器具を使っている」は両立するため、不一致として扱わない。
+- 「同じ料理器具を使っている」は器具の共有で、原材料への含有は未確認であることを示す。「含まれない」は原材料についての回答で、交差接触がないことは確認していないことを示す。
 - APIの `is_public=true`（双方同意・店舗あり）の場合だけ「This menu and the staff answers will be shared on the map.」と表示する。店員の同意だけで公開済みと表示しない。falseなら「These answers are not shared publicly.」と表示する。
 
 ## 状態と表示
@@ -113,7 +120,7 @@ Vegan／Vegetarian／Halal／No alcoholの対象条件は [食事制限マスタ
 | 解析中 | 送信を無効化。終了・失敗を表示し、無限に待機しない |
 | メニューを読めない | 再撮影を案内。料理名や価格を捏造して埋めない |
 | AIによる説明 | 「AI-generated description」と明示する |
-| 店舗未選択 | 予測はAIだけで行う。「No restaurant selected. Previous staff answers are not used.」を表示 |
+| 店舗未選択 | 過去の店員回答（履歴）は使わず、AIの候補と今回の回答だけを表示する。「No restaurant selected. Previous staff answers are not used.」を表示 |
 | 解析の期限切れ | 店員確認を保存できない。再撮影を案内する |
 | 確認の上限（1メニュー5回） | 再撮影を案内する |
 | 公開メニューがない店舗（P1） | 「No shared menus yet.」を表示 |
@@ -123,13 +130,13 @@ Vegan／Vegetarian／Halal／No alcoholの対象条件は [食事制限マスタ
 | 試行回数超過（P1） | しばらく待ってから再試行するよう表示し、送信を無効化する |
 | アカウントトークン期限切れ（P1） | ログアウト状態に戻し、再ログインを促す。端末内の同行者プロファイルは消さない |
 | 未ログイン | 端末内プロファイルだけでP0を一巡できる。本人設定のサーバー保存にはログインが必要 |
-| 対象項目なし | 予測は参考閲覧できるが、店員確認の質問は作れない。⑤または⑯→⑰で確認対象を選ぶよう案内する |
+| 対象項目なし | AIの候補は参考閲覧できるが、店員確認の質問は作れない。⑤または⑯→⑰で確認対象を選ぶよう案内する |
 | 明示的な「分からない」 | 未回答と区別して「Unknown」と表示する。不使用・対応可として表示しない |
 
 ## ⑥マップ・⑦店舗詳細（P1）
 
 - Google Maps JavaScript APIに `GET /places/nearby` の結果をピン表示し、`has_public_menus=true` の店舗を色で区別する。店名はGoogleの結果を使い、帰属表示を付ける。
-- ピンを押すと `GET /places/{google_place_id}/public-menus` を、閲覧者の両種の対象ID付きで取得する。他の利用者分も含む公開回答を料理ごとに集計し、名称・訳・価格は最新の公開料理を表示する。表示規則は「予測の表示」と同じ。
+- ピンを押すと `GET /places/{google_place_id}/public-menus` を、閲覧者の両種の対象ID付きで取得する。他の利用者分も含む公開回答を料理ごとに集計し、名称・訳・価格は最新の公開料理を表示する。表示規則は「判定の表示」と同じ（公開集計には今回の回答はなく、`staff_answers_verified=false` の未認証の回答として件数・日時を示す）。
 - 個別履歴欄 `Your scans at this restaurant` は `GET /me/menus?google_place_id=...` で本人の同店舗分だけを取得する。未確認・非公開も含み、店舗スキップ分は含まない。ゲストは現在のタブ内の本人分だけを使う。
 - 撮影ボタンは候補を⑧へ渡す。公開情報の閲覧だけでは回答を保存できず、自分で撮影・解析する必要がある。
 
@@ -138,14 +145,14 @@ Vegan／Vegetarian／Halal／No alcoholの対象条件は [食事制限マスタ
 - 「I agree to share menus I scan and staff answers when restaurant staff also agree.」を英語で示し、`Agree`／`Do not agree` を初期未選択で選ばせる。利用条件への同意とは別項目とする。
 - どちらを選んでも登録できる。未選択では登録を進めない。公開には店員の同意と店舗の選択も必要で、画像・アカウント情報・本人の設定は公開しないことを説明する。
 - 登録後の解析には保存済みの同意を使う。⑭・⑮で利用者に毎回同意を求めない。ゲスト・登録前の読み込みは非公開で、後から登録しても自動公開しない。
-- 公開不同意の回答も、店舗を選択した解析の予測には個別履歴を公開せず集計利用する既存方針を説明する。
+- 公開不同意の回答も、店舗を選択した解析の履歴の集計には個別回答を公開せずに使う既存方針を説明する。
 
 ## 本人の読み込み履歴（P1）
 
 ルート `/history`・`/history/menu?id=<menu_id>` と⑯の `My scans` は、ユーザーの履歴要件を補う実装案で、Miroの画面番号は新しく割り当てない。
 
 - ⑯から全店舗の履歴を新しい順に表示し、撮影日時・料理名・確認件数・公開状態を示す。⑦ではその店舗の本人分だけを表示する。表示するのはログイン中に解析成功したメニューで、他人の公開メニューを見ただけでは追加しない。
-- API 16で一覧、API 17で詳細を取得する。詳細には当該メニューの料理・AI予測と、そのメニューに保存された店員の個別回答を別欄に表示する。公開集計に含まれる他人の個別回答は並べない。
+- API 16で一覧、API 17で詳細を取得する。詳細には当該メニューの料理・AIの候補・履歴の集計と、そのメニューに保存された店員の個別回答を別欄に表示する。公開集計に含まれる他人の個別回答は並べない。
 - 同じ料理でも撮影が別なら履歴は別メニュー。非公開・店舗スキップ・店員未確認でも本人は閲覧できる。履歴なし、取得失敗、ログイン期限切れを表示する。
 - メニュー画像は表示せず、画像削除後も解析済みテキスト・回答を閲覧できる。解析用トークンが失効していても本人履歴は読めるが、店員確認の追加には新しい撮影を案内する。
 - ゲストの履歴は現在のタブで保持する解析一覧・確認結果だけ。ログアウト時は本人履歴の画面状態・本人分の解析トークンと結果キャッシュを破棄し、別アカウントのログイン時に混ぜない。同行者プロファイルの切替では履歴の所有者は変わらない。

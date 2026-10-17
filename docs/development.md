@@ -8,18 +8,18 @@
 |---|---|
 | [要件](../requirements.md) | 目的、P0／P1／P2、受入条件 |
 | [画面仕様](screens.md) | Miroの画面番号、遷移、状態、表示文言 |
-| [API仕様](api.md) | 全17操作（P0の7・P1の10）、認証、入出力、上限、予測計算 |
+| [API仕様](api.md) | 全17操作（P0の7・P1の10）、認証、入出力、上限、判定アルゴリズム |
 | [DB仕様](database.md) | 11テーブル、マスタ、RPC4つ、公開ビュー3つ、Storageと権限 |
 | 本書 | 構成、準備、開発ルール、検証、未決事項 |
 
-現時点で実装・検証済みなのはDB（`supabase/`）だけで、アプリ（`apps/mobile`・`apps/api`）は未作成。DBは5つのマイグレーションを2026-10-17にSupabaseプロジェクト `Meelyze-plus`（本番兼用）へ適用し、検証結果を [Supabase README](../supabase/README.md) に記録した。`contracts/openapi.yaml` は作成済みだが、実装との照合は未実施。旧設計の検証結果は現行仕様の検証済み根拠には使わない。
+DB（`supabase/`）は5つのマイグレーションを2026-10-17にSupabaseプロジェクト `Meelyze-plus`（本番兼用）へ適用し、検証結果を [Supabase README](../supabase/README.md) に記録した。API（`apps/api`）は全17操作を実装し、ローカルのSupabaseと実キーのGemini・Placesで検証した（Vercelへのデプロイは未実施。[API README](../apps/api/README.md)）。フロント（`apps/mobile`）は未作成。`contracts/openapi.yaml` は2026-10-17に実装と照合済み。旧設計の検証結果は現行仕様の検証済み根拠には使わない。
 
 ## 構成と準備
 
 | 配置・サービス | 役割 | 個別の設定 |
 |---|---|---|
 | `apps/mobile`：React Native・Expo Web | 利用者の画面と店員確認カード。TypeScript、Expo Router | [フロントREADME](../apps/mobile/README.md) |
-| `apps/api`：FastAPI | 認証、Gemini解析、Places検索、DB操作、予測 | [API README](../apps/api/README.md) |
+| `apps/api`：FastAPI | 認証、Gemini解析、Places検索、DB操作、判定 | [API README](../apps/api/README.md) |
 | Supabase PostgreSQL・Storage | データと非公開画像。ブラウザから直接アクセスさせない | [DBセットアップ](../supabase/README.md) |
 | Gemini | 構造化した料理・原材料候補・根拠・英訳の生成 | APIから呼ぶ |
 | Google Maps Platform | Places API（New）で店舗候補、Maps JavaScript APIで地図（P1） | サーバー用・ブラウザ用キーを分ける |
@@ -40,14 +40,14 @@
 | `apps/api` | `python -m uvicorn app.main:app --reload` | API開発サーバー |
 | `apps/api` | `python -m pytest` | テスト |
 
-### 未作成のファイル
+### 作成するファイル
 
 | パス | 作成時に合わせる内容 |
 |---|---|
-| `contracts/openapi.yaml` | 作成済み。API仕様の17操作。解析用・アカウント用のBearer認証を区別し、API実装時にFastAPIの `/openapi.json` と照合する |
-| `contracts/menu_analysis.schema.json` | アレルゲン29種・食事制限4種、候補と根拠の組、`translations.en`、料理・価格の制約。未定義フィールドを拒否する |
-| `prompts/menu_analysis.md` | 削除を維持し、この整理では復元しない。VLM実装時はv4として、全マスタを入力し、利用者の選択設定を渡さず、画像内の指示に従わない方針で作成する |
-| `apps/api/.env.example`・`apps/mobile/.env.example` | 各READMEの環境変数。秘密値は空欄にする |
+| `contracts/openapi.yaml` | 作成済み。API仕様の17操作。解析用・アカウント用のBearer認証を区別する。2026-10-17に実装の `/openapi.json` と照合済み（`apps/api/tests/test_openapi_contract.py`） |
+| `apps/api/contracts/menu_analysis.schema.json` | 作成済み（03）。VLM出力の契約。アレルゲン29種・食事制限4種、候補と根拠の組、`translations.en`、料理・価格の制約。未定義フィールドを拒否する。VercelのRoot Directory `apps/api` に含めるためAPIの配下に置く |
+| `apps/api/prompts/menu_analysis.md` | 作成済み（03）。v4。全マスタを入力し、利用者の選択設定を渡さず、画像内の指示に従わない |
+| `apps/api/.env.example`・`apps/mobile/.env.example` | 各READMEの環境変数。秘密値は空欄にする（APIは作成済み） |
 | `apps/mobile/vercel.json` | Expo WebのSPAリライト |
 
 ## 開発ルール
@@ -66,26 +66,25 @@
 
 | 項目 | 初期値・扱い |
 |---|---|
-| Gemini | `gemini-3.8-flash`。使用するAPIキーで画像入力・構造化出力・利用権限を確認して固定 |
-| AI待機 | アプリ側45秒。Vercel側は後処理も収まる実行時間に設定 |
+| Gemini | `gemini-3.8-flash`（2026-10-17に実キーで画像入力・構造化出力を確認）。思考レベル `LOW` |
+| AI待機 | アプリ側45秒。Vercelの `maxDuration` は120秒（`apps/api/vercel.json`） |
 | プロンプト | `v4`。バージョンはAPIが付与 |
-| AIの仮の票 | `AI_PRIOR_WEIGHT_EXPLICIT=2.0`、`AI_PRIOR_WEIGHT_POSSIBLE=1.0` |
 | 回答の半減期 | `STORE_ANSWER_HALF_LIFE_DAYS=30`。食品情報の有効期限を意味しない |
 | パスワード | Argon2id。`argon2-cffi` の既定パラメータを動作確認し、バージョンを固定 |
 | 色 | 暫定 `#004539`＋白。正式な配色は未確定 |
 
-重みと半減期は店舗の原材料・レシピと照合した検証データで評価するまで変えない。レート制限の初期値はAPI仕様に従い、共有IPからの利用も確認する。
+AIの根拠別の重み（`(c+1)/(n+2)`）は検証データがないため常にnull。半減期は店舗の原材料・レシピと照合した検証データで評価するまで変えない。レート制限の初期値はAPI仕様に従い、共有IPからの利用も確認する。
 
 ## デプロイと運用
 
 - フロントのRoot Directoryは `apps/mobile`、Expoは `web.output: "single"`。画面仕様の各ルートへ直接アクセスできるSPAリライトを用意する。
-- APIのRoot Directoryは `apps/api`、エントリポイントは `app/main.py` の `app`。リポジトリ直下の `contracts/`・`prompts/` がデプロイに含まれることを確認する。
+- APIのRoot Directoryは `apps/api`、エントリポイントは `app/main.py` の `app`。`apps/api/contracts/`・`apps/api/prompts/` がデプロイに含まれることを確認する（`vercel.json` の `excludeFiles` で除外していないことはテスト済み）。
 - フロントURLを `ALLOWED_ORIGINS`、APIの `/api/v1` を含むURLを `EXPO_PUBLIC_API_BASE_URL` に設定する。本番・スマートフォンでの確認はHTTPSを使う。
 - `/api/v1/health` と `/places/select`・`/capture/preview` の直接アクセスを確認する。画面状態がない場合は店舗選択・撮影へ案内し、デプロイ保護で停止しないことを確かめる。
 - Vercel Functionsのリクエスト・レスポンス本文上限4.5MBに収める。画像の2 MiB上限に加え、multipartの付加情報も含めて確認する。[Vercelの制限](https://vercel.com/docs/functions/limitations)
 - レート制限は複数インスタンスで共有できる保存先を使う。プロセス内カウンターだけには依存しない。
 - 解析POSTは自動再送しない。確認保存で結果が不明な場合は、同じ内容・`request_id` で再送する。
-- 画像・Authorization・トークン・座標・メール・パスワード・個人の設定をログに残さない。解析・確認・アカウント・公開集計のレスポンスは `Cache-Control: no-store`。
+- 画像・Authorization・トークン・座標・メール・パスワード・個人の設定をログに残さない。解析・確認・アカウント・公開集計・周辺検索のレスポンスは `Cache-Control: no-store`。
 - Supabaseは `Meelyze-plus`（Project Ref `pqegjvcyfnmqpmwxaogp`、`ap-southeast-1`）を**本番兼用**で使う。DB変更は [Supabase README の適用手順](../supabase/README.md#適用手順クラウド) に従い、対象と差分を提示して承認を得てから `db push` する。データを書き込む試験はこのプロジェクトで行わず、ローカル（`supabase start`）か使い捨てのプロジェクトで行う。
 
 ## 検証
@@ -113,16 +112,18 @@
 - 登録の同意はtrue／falseとも受理し、欠落・nullを拒否すること。日時・文言バージョンをクライアントに指定させず、平文パスワードを保存・返却しないこと。
 - 大文字小文字違いの重複メールは409。メール不存在・パスワード違いは同じ401。登録・ログイン・解析・周辺検索のレート制限は429。
 - 確認の直積、両配列の料理集合、10料理・50問・5回の上限を検証する。片側だけの確認も許可し、両方空は拒否すること。
-- 公開集計に非公開回答の内容・件数、所有者・menu_id・dish_id・session_id、個別カード・画像・トークン・本人設定が出ないこと。代表料理を安定して選び、AIの票を1件分だけ加えること。
+- 公開集計に非公開回答の内容・件数、所有者・menu_id・dish_id・session_id、個別カード・画像・トークン・本人設定が出ないこと。代表料理を安定して選び、AIの候補を店員回答と合成しないこと。
 - 履歴の店舗フィルター・ページングでも所有者条件が外れないこと。他人・存在しないメニューは同じ404。未確認・非公開・店舗未選択を本人だけが読めること。
 - 履歴の個別回答は本人の当該メニューだけ。画像削除・解析トークン失効後も閲覧できるが、アカウントJWTで回答追加はできないこと。ゲスト履歴を後から自動移管しないこと。
 - ログへの機密情報流出がなく、Storage保存後のDB失敗で画像を削除すること。
 
-### 予測
+### 判定
 
-- 根拠の優先順位・重複除去・statusとsourceの整合性。料理名のNFKC・空白除去・小文字化と、表記が異なる料理の分離。
-- 回答なしはAIのみ、不明回答のみならAIの分類を維持し、件数・最終日時には不明も含めること。ゼロ除算しないこと。
-- 重みが0日1.0・30日0.5・60日0.25となり、APIの計算例と一致すること。同率の優先順と両極の回答の不一致検出。
+- 根拠の優先順位・重複除去・statusとsourceの整合性。料理名のNFKC・空白除去・小文字化と、表記が異なる料理の分離。AIの重みがnullで、AIと店員回答を合成しないこと。
+- 回答なし・不明のみで `S=null`（不明は件数に入る）。器具共有・不明・未回答がα・βに入らないこと。食事制限の `not_supported`／`supported` も同じ規則。
+- 重みが0日1.0・30日0.5・60日0.25となり、計算例（含まれる1・含まれない3・器具共有2・わからない1で `S≈0.333`）と一致すること。同じメニューは最新の1件。
+- 表示ルール（AIの含有記載と「含まれない」の食い違い、過去の不一致、器具共有の履歴。AIの含有候補と器具共有を不一致としない）。
+- アレルゲンのAPIの値とDBの値が往復で一致し、旧値（`not_contains`・`cross_contact`）をAPIが422にすること。
 - 店舗・料理名キー・項目ID・アレルゲン／食事制限の種類を混同せず、公開集計には公開対象だけを使うこと。
 
 ### 画面
@@ -141,7 +142,7 @@
 ### 外部サービス・デプロイ
 
 - Geminiの利用権限、実画像の読取精度、構造化JSON、45秒のタイムアウト。Googleの周辺検索・不正Place IDの拒否・障害時の503。
-- Vercelでの画像容量・実行時間・CORS・HTTPS・直接アクセスと、`contracts/`・`prompts/` の同梱。
+- Vercelでの画像容量・実行時間・CORS・HTTPS・直接アクセスと、`apps/api/contracts/`・`apps/api/prompts/` の同梱。
 - R01〜R09を公開URLで一巡し、アレルゲンのみ・食事制限のみ・両方、店舗スキップ・同意なし・期限切れを確認してからP0完了とする。
 
 ## 未決事項
@@ -152,6 +153,6 @@
 | 外部サービス利用前 | Googleの帰属表示・利用条件・料金、Geminiの実キーでの動作 |
 | 一般公開前 | 利用条件・プライバシーポリシー、画像の定期削除、本人履歴の保持期間、アカウント削除、利用者・店員の同意撤回と過去公開分への反映、回答の訂正・削除 |
 | 一般公開前（Supabase設定） | Authの新規登録の停止（Supabase Authは使わないが既定で有効）、DB接続のSSL強制、DB接続元の制限、Security Advisorが警告するSupabase既定の関数 `public.rls_auto_enable` の `anon`・`authenticated` への実行権限の扱い。2026-10-17時点ですべて未対応 |
-| ハッカソン後 | 店員なりすまし・誤回答対策、料理名の表記ゆれ、予測の重みの校正、JWTの即時失効。他のP2項目は要件を参照 |
+| ハッカソン後 | 店員なりすまし・誤回答対策、料理名の表記ゆれ、AIの根拠別の重みの校正（検証データの作成）、料理のレシピ版による同一性、JWTの即時失効。他のP2項目は要件を参照 |
 
 MVPには登録後の同意変更API・店員の公開取消手段・JWTの即時失効を設けていない。②の利用条件確認、登録時の公開同意、ブラウザの位置情報許可は別々に扱う。

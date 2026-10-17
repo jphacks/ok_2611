@@ -1,0 +1,13 @@
+# Vercel CLIでアップロードしない（秘密値・ローカル環境・開発用）。
+# 関数の同梱から外すものは vercel.json の excludeFiles にも書く
+.env
+.env.*
+!.env.example
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+tests/
+scripts/
+task/
+docs/

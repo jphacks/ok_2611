@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meelyze+ menu analysis output (prompt v4)",
+  "description": "Geminiの構造化出力の契約。APIはこのスキーマで検証した後、項目IDのマスタ照合・statusとsourceの組・価格の小数桁・料理名キーを追加で検証する。未定義のフィールドは拒否する。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dishes"],
+  "properties": {
+    "dishes": {
+      "type": "array",
+      "description": "読み取れた料理をメニュー上の順に最大20件。読めない料理は含めない。0件は読めないメニュー。",
+      "minItems": 0,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "translations", "price", "currency", "ingredients", "allergens", "dietary_restrictions"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "メニュー上の料理名の原文。",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "translations": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["en"],
+            "properties": {
+              "en": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "description"],
+                "properties": {
+                  "name": {"type": "string", "description": "料理名の英訳。", "minLength": 1, "maxLength": 200},
+                  "description": {"type": "string", "description": "AIによる英語の短い説明。安全性・適合性を断定しない。", "maxLength": 500}
+                }
+              }
+            }
+          },
+          "price": {
+            "type": ["number", "null"],
+            "description": "メニューに記載された価格。読めない・記載がない場合はnull。",
+            "minimum": 0,
+            "maximum": 99999999.99
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217の通貨コード（大文字3文字）。日本円はJPY。",
+            "minLength": 3,
+            "maxLength": 3
+          },
+          "ingredients": {
+            "type": "array",
+            "description": "この料理についてメニューに記載された原材料（原文）。記載がなければ空配列。",
+            "maxItems": 50,
+            "items": {"type": "string", "minLength": 1, "maxLength": 100}
+          },
+          "allergens": {
+            "type": "array",
+            "description": "根拠のあるアレルゲン候補。1つのアレルゲンにつき根拠を優先順で1つだけ。",
+            "maxItems": 29,
+            "items": {"$ref": "#/$defs/allergen_candidate"}
+          },
+          "dietary_restrictions": {
+            "type": "array",
+            "description": "根拠のある食事制限への抵触候補。1つの食事制限につき根拠を優先順で1つだけ。",
+            "maxItems": 4,
+            "items": {"$ref": "#/$defs/dietary_candidate"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "string",
+      "description": "根拠の分類。優先順：menu_text（メニューの記載）→ recipe_inference（一般的な参照レシピ。その店舗の実際のレシピではない）→ dish_name_inference（料理名からの推定）→ unavailable（根拠なし・判読不能）。",
+      "enum": ["menu_text", "recipe_inference", "dish_name_inference", "unavailable"]
+    },
+    "evidence": {
+      "type": "string",
+      "description": "menu_textは対応する原文、推定は推定理由（英語）、unavailableは空文字可。",
+      "maxLength": 500
+    },
+    "allergen_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allergen_id", "status", "source", "evidence"],
+      "properties": {
+        "allergen_id": {"type": "integer", "minimum": 1, "maximum": 29},
+        "status": {
+          "type": "string",
+          "description": "menu_text→explicit_present、recipe_inference・dish_name_inference→possible、unavailable→unknown。",
+          "enum": ["explicit_present", "possible", "unknown"]
+        },
+        "source": {"$ref": "#/$defs/source"},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "dietary_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dietary_restriction_id", "status", "source", "evidence"],
+      "properties": {
+        "dietary_restriction_id": {"type": "integer", "minimum": 1, "maximum": 4},
+        "status": {
+          "type": "string",
+          "description": "menu_text→explicit_conflict、recipe_inference・dish_name_inference→possible_conflict、unavailable→unknown。",
+          "enum": ["explicit_conflict", "possible_conflict", "unknown"]
+        },
+        "source": {"$ref": "#/$defs/source"},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    }
+  }
+}
