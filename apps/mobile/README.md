@@ -162,6 +162,7 @@ AIの推定と店員の回答は区別する。「安全」「食べられる」
 - Root Directory：`apps/mobile`
 - Build Command：`expo export -p web`
 - Output Directory：`dist/client`
+- `api/index.ts` の関数は `runtime` を指定せず、Vercel標準のNodeランタイム（`engines.node` の `24.x`）を使う。`@vercel/node@5.1.8` 等の旧版を固定すると、Node 24を知らないため `BUILD_UTILS_NODE_VERSION_INVALID` でビルドが失敗する（2026-10-18に確認）
 - 全リクエストを `/api/index` へ渡し、[api/index.ts](api/index.ts) の `expo-server/adapter/vercel` が `dist/server` を使って処理
 
 単に静的ファイルを置くSPA構成ではなく、入力検証・表示整形のAPI Routesも必要になる。デプロイ時は各画面の直接アクセスに加え、上記の補助APIが応答することを確認する。
