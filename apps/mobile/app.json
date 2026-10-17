@@ -6,11 +6,11 @@
     "icon": "./assets/meelyze-icon.png",
     "platforms": ["web"],
     "web": {
-      "output": "single",
+      "output": "static",
       "name": "Meelyze+",
       "bundler": "metro",
       "favicon": "./assets/meelyze-icon.png"
     },
-    "plugins": ["expo-router"]
+    "plugins": [["expo-router", { "apiRoutes": true }]]
   }
 }

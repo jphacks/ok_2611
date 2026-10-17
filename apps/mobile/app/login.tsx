@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { ApiError, isApiConfigured, loginAccount, saveAccountToken } from "../src/api/auth";
+import { ApiError, isLoginApiConfigured, loginAccount, saveAccountToken } from "../src/api/auth";
 import { FormField } from "../src/components/FormField";
 import { Page } from "../src/components/Page";
 import { PrimaryButton } from "../src/components/PrimaryButton";
@@ -19,7 +19,7 @@ export default function LoginScreen() {
       setError("Enter your email and password.");
       return;
     }
-    if (!isApiConfigured) {
+    if (!isLoginApiConfigured) {
       setError("Preview mode: connect the API to log in.");
       return;
     }

@@ -1,3 +1,5 @@
+import { apiEndpoints, isEndpointConfigured } from "./endpoints";
+
 export type AuthResponse = {
   account: {
     id: string;
@@ -17,10 +19,8 @@ export type RegisterRequest = {
   publish_consent: boolean;
 };
 
-const configuredBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-
-export const isApiConfigured =
-  Boolean(configuredBaseUrl) && !configuredBaseUrl?.includes("YOUR_API_BASE_URL");
+export const isRegisterApiConfigured = isEndpointConfigured("register");
+export const isLoginApiConfigured = isEndpointConfigured("login");
 
 export class ApiError extends Error {
   constructor(
@@ -32,14 +32,14 @@ export class ApiError extends Error {
   }
 }
 
-async function postAuth(path: string, body: object): Promise<AuthResponse> {
-  if (!isApiConfigured || !configuredBaseUrl) {
+async function postAuth(url: string, body: object): Promise<AuthResponse> {
+  if (!url.trim()) {
     throw new ApiError(0, "api_not_configured", "The API URL is not configured.");
   }
 
   let response: Response;
   try {
-    response = await fetch(`${configuredBaseUrl.replace(/\/$/, "")}${path}`, {
+    response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -65,15 +65,19 @@ async function postAuth(path: string, body: object): Promise<AuthResponse> {
 }
 
 export function registerAccount(body: RegisterRequest): Promise<AuthResponse> {
-  return postAuth("/auth/register", body);
+  return postAuth(apiEndpoints.register, body);
 }
 
 export function loginAccount(body: { email: string; password: string }): Promise<AuthResponse> {
-  return postAuth("/auth/login", body);
+  return postAuth(apiEndpoints.login, body);
 }
 
 export function saveAccountToken(token: string): void {
   if (typeof window !== "undefined") {
     window.sessionStorage.setItem("meelyze.account_token", token);
   }
+}
+
+export function getAccountToken(): string | null {
+  return typeof window === "undefined" ? null : window.sessionStorage.getItem("meelyze.account_token");
 }
