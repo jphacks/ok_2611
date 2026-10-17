@@ -198,7 +198,7 @@ supabase/tests/.venv/bin/python supabase/tests/remote_readonly.py --project-ref 
 ### 未検証・残作業
 
 - **適用先での書込を伴う試験**（並行実行、Storageの実アップロード・削除、SDK経由の保存、バケット設定不一致での停止）：本番兼用のため未実施。ローカルの結果で代えている。適用先で確認する場合は使い捨ての別プロジェクトで行う。
-- **`SUPABASE_URL` の値**：`supabase/.env.local` の `SUPABASE_URL` が `https://<ref>.supabase.co/rest/v1/` になっている。SDK・APIは `https://<ref>.supabase.co`（パスなし）を使うため修正が必要（`remote_readonly.py` はプロジェクトのURLに直して実行した）。
+- **`SUPABASE_URL` の値**：検証時は `supabase/.env.local` の値が `.../rest/v1/` 付きだったため、`remote_readonly.py` はプロジェクトのURLに直して実行した。その後 `https://<ref>.supabase.co` に修正済み。APIでも同じ形式を使う（[API README](../apps/api/README.md#環境変数)）。
 - **APIの担当**（DBの検証では確認していない）：JWTの署名・期限・本人確認、メールの正規化・パスワード照合、所有者条件を常に付けること、公開APIの集計・返却項目の制限、HTTPステータスへの変換、Storage保存後にDB登録が失敗した場合の画像削除。
 - **一般公開前の未決事項**（このタスクで仕様を追加していない）：画像の定期削除（現状は下記の手動手順）、本人履歴の保持期間、利用者・店員の同意撤回と過去公開分への反映、アカウント削除時の扱い。
 

@@ -1,6 +1,6 @@
 # DB仕様
 
-本書はテーブル・マスタ・保存処理・権限の設計。SQLは未作成。適用手順は [Supabase README](../supabase/README.md)、APIと予測計算は [api.md](api.md) を参照する。実装時は本書とマイグレーションを一致させる。
+本書はテーブル・マスタ・保存処理・権限の設計。SQLは `supabase/migrations/` の5ファイルで実装し、2026-10-17にSupabaseプロジェクト `Meelyze-plus`（本番兼用）へ適用・検証した。RPCの呼び出し例・取得SQL例・検証結果・適用手順は [Supabase README](../supabase/README.md)、APIと予測計算は [api.md](api.md) を参照する。本書とマイグレーションを一致させ、変更は新しいマイグレーションと本書の更新で行う。
 
 ## 全体像
 
@@ -124,7 +124,7 @@ erDiagram
 | `id` | uuid | PK |
 | `session_id` | uuid | 必須。`confirmation_sessions` への外部キー |
 | `dish_id` / `allergen_id` | uuid / smallint | 必須。料理は確認と同じメニューのものに限る |
-| `dish_version` | integer | 回答時点の料理の版 |
+| `dish_version` | integer | 必須。回答時点の料理の版。RPCが料理の現在の版を保存し、APIからは送らない |
 | `answer` | text | 必須。`contains`（含まれる）／`cross_contact`（交差接触）／`not_contains`（含まれない）／`unknown`（分からない） |
 | `created_at` | timestamptz | `now()` |
 
@@ -137,15 +137,16 @@ erDiagram
 | 列 | 型 | 制約・説明 |
 |---|---|---|
 | `id` | uuid | PK。`gen_random_uuid()`。アカウントの固有ID |
-| `email` | text | 必須・一意。`email = lower(email)` のチェック制約。3〜254文字。APIが前後空白を除き小文字化して保存する |
-| `nickname` | text | 必須。前後空白を除き1〜30文字。一意ではない |
+| `email` | text | 必須・一意。`email = lower(email)`・前後空白なし・3〜254文字のチェック制約。DBは検査だけを行い、正規化（前後空白の除去・小文字化）はAPIが保存前に行う |
+| `nickname` | text | 必須。前後空白なし（APIが除去）・1〜30文字のチェック制約。一意ではない |
 | `password_hash` | text | 必須。Argon2idのPHC形式で、`$argon2id$` で始まること |
 | `publish_consent` | boolean | 必須。③の登録時の利用者の明示選択。falseでも登録可能 |
-| `publish_consent_recorded_at` | timestamptz | 必須、DBの `now()`。同意・不同意の選択を記録した時刻 |
+| `publish_consent_recorded_at` | timestamptz | 必須、DBの `now()`。同意・不同意の選択を記録した時刻。列権限によりAPIから値を指定できない |
 | `publish_consent_version` | text | 必須。APIが管理する公開同意文言のバージョン。クライアントに指定させない |
 | `created_at` / `updated_at` | timestamptz | `now()`。`updated_at` はパスワードの再ハッシュ時に更新する |
 
 - パスワードの平文、ログイン用トークン、トークンのハッシュは保存しない。
+- `id`・`publish_consent_recorded_at`・`created_at`・`updated_at` の初期値はDBが決める。登録時にAPIが指定できるのは `email`・`nickname`・`password_hash`・`publish_consent`・`publish_consent_version` だけ（[権限](#権限)）。
 - メールアドレスの確認状態の列は持たない（メール確認はP2）。
 
 ### `account_allergens`（P1）
@@ -178,7 +179,7 @@ erDiagram
 | `session_id` | uuid | 必須。`confirmation_sessions` への外部キー |
 | `dish_id` | uuid | 必須。`dishes` への外部キー。確認と同じメニュー |
 | `dietary_restriction_id` | smallint | 必須。`dietary_restrictions` への外部キー |
-| `dish_version` | integer | 回答時点の料理の版 |
+| `dish_version` | integer | 必須。回答時点の料理の版。RPCが料理の現在の版を保存し、APIからは送らない |
 | `answer` | text | 必須。`not_supported`／`supported`／`cross_contact`／`unknown` |
 | `created_at` | timestamptz | `now()` |
 
@@ -211,23 +212,29 @@ erDiagram
 
 ## トリガー
 
-| トリガー | 関数 | 内容 |
-|---|---|---|
-| `trg_validate_session` | `validate_confirmation_session()` | 店舗がメニューの店舗と一致すること、1メニューあたり5件以内であることを確認する |
-| `trg_validate_answer`・`trg_validate_dietary_answer` | `validate_confirmation_answer()` | 料理が確認と同じメニューに属すること、料理の版が一致することを確認する |
-| `trg_menu_immutable` / `trg_dish_immutable` / `trg_session_immutable` / `trg_answer_immutable`・`trg_dietary_answer_immutable` | `reject_snapshot_update()` | 更新を拒否する（`snapshot_is_immutable`） |
+| トリガー | 関数 | 内容 | エラー（SQLSTATE・メッセージ） |
+|---|---|---|---|
+| `trg_validate_session` | `validate_confirmation_session()` | メニュー行をロックし、店舗がメニューの店舗と一致すること、1メニューあたり5件以内であることを確認する。RPCを経由しない挿入にも適用 | `22023` `restaurant_mismatch`／`confirmation_limit_reached` |
+| `trg_validate_answer`・`trg_validate_dietary_answer` | `validate_confirmation_answer()` | 料理が確認と同じメニューに属すること、料理の版が一致することを確認する | `22023` `dish_not_in_menu`／`dish_version_mismatch` |
+| `trg_menu_immutable` / `trg_dish_immutable` / `trg_session_immutable` / `trg_answer_immutable`・`trg_dietary_answer_immutable` | `reject_snapshot_update()` | 更新を拒否する。所有者（`postgres`）の接続でも拒否される | `55000` `snapshot_is_immutable` |
 
 ## DB関数（RPC）
 
-いずれも `security invoker` とし、`service_role` だけが実行できる。置換RPCは呼び出し元の権限で動くため、本人設定の2テーブルには `service_role` の `insert`・`delete` も付与する。APIは削除・追加を別々に呼ばず、RPCを通す。
+いずれも `security invoker`・`search_path` 空で定義し、`service_role` だけが実行できる。置換RPCは呼び出し元の権限で動くため、本人設定の2テーブルには `service_role` の `insert`・`delete` も付与する。APIは削除・追加を別々に呼ばず、RPCを通す。引数はPostgREST（Supabase SDKの `rpc`）からJSONで渡す。呼び出し例は [API README](../apps/api/README.md#supabaseの利用) を参照する。
 
-### `save_menu_analysis(p_restaurant_id, p_image_path, p_analysis_token_hash, p_dishes, p_ai_model, p_prompt_version, p_analysis_expires_at, p_account_id)`
+### `save_menu_analysis(p_restaurant_id, p_image_path, p_analysis_token_hash, p_dishes, p_ai_model, p_prompt_version, p_analysis_expires_at, p_account_id)` → `uuid`
 
-メニュー1件と料理1〜20件を、1つのトランザクションで登録し、`menu_id` を返す。途中で失敗すると、メニューも含めてロールバックする。`p_dishes` の各要素は `name`、`name_key`、`translations`、`price`、`currency`、`ai_result` を持つ。RPCが配列の順序を1始まりの `position` として保存する。
+メニュー1件と料理1〜20件を、1つのトランザクションで登録し、`menu_id` を返す。途中で失敗すると、メニューも含めてロールバックする。`p_dishes`（JSON配列）の各要素は `name`・`name_key`（文字列）、`translations`・`ai_result`（オブジェクト）、`price`（数値かnull、省略可）、`currency`（文字列かnull、省略時 `JPY`）だけを持ち、それ以外のキーは拒否する。RPCが配列の順序を1始まりの `position` として保存する。`p_analysis_token_hash` は小文字16進64文字、`p_analysis_expires_at` 省略時は `now() + 24時間`。
 
 P1の `p_account_id` はAPIが検証済みアカウントJWTの `sub` から渡す任意引数（既定NULL）。RPCがアカウントの存在を検証し `accounts.publish_consent` を読んで、所有者と利用者同意をメニューに保存する。利用者同意のbooleanはRPC引数にしない。NULLなら所有者なし・同意false。初期のP0用RPCは所有者引数なし・同意falseで作成し、アカウント作成後の追加マイグレーションで旧シグネチャを削除してこの定義へ置き換える。引数違いの旧関数を残さない。
 
 Storageへの画像保存は別の処理になる。DB登録が失敗した場合は、FastAPIがStorage APIで画像を削除する。
+
+| SQLSTATE | 例外メッセージ・内容 |
+|---|---|
+| `P0002` | `account_not_found`（`p_account_id` のアカウントがない） |
+| `22023` | `dishes_invalid`（配列以外・0件／21件以上・要素の形式）、`invalid_analysis_token_hash` |
+| `23514`・`23503`・`23505` | 料理名の長さ・負の価格・過去の期限などのチェック制約違反、存在しない店舗、画像パス・ハッシュの重複（制約のエラーをそのまま返す） |
 
 ### `complete_confirmation_session(p_menu_id, p_analysis_token_hash, p_request_id, p_answers, p_dietary_answers, p_publish_consent)`
 
@@ -237,7 +244,9 @@ Storageへの画像保存は別の処理になる。DB登録が失敗した場�
 2. 両配列の合計回答数（1〜50）、料理の和集合（1〜10）、重複、値、料理とメニューの一致、未知の項目IDを検証する。各配列は料理集合×項目集合の全組を必要とし、両配列に回答がある場合は料理集合を一致させる。
 3. 同じ `request_id` があれば、両配列を並べ替えて店員の公開可否と比較し、下表の再送処理を行う。
 4. 新規の確認にだけ1メニュー5回の上限を適用する。確認行と両回答配列を一括保存し、いずれかが失敗すれば全体をロールバックする。
-5. `session_id`、`confirmed_at`、`replayed` を返す。
+5. `session_id`、`confirmed_at`、`replayed` を1行で返す（OUT引数。PostgRESTでは単一のJSONオブジェクト）。
+
+各要素は `{dish_id, allergen_id, answer}`／`{dish_id, dietary_restriction_id, answer}` のちょうど3キーとし、`dish_version` は受け取らない。
 
 5回目の確認の再送も成功させるため、上限判定は再送判定の後に行う。期限切れは再送でも拒否する。
 
@@ -254,20 +263,20 @@ Storageへの画像保存は別の処理になる。DB登録が失敗した場�
 | `P0002` | `menu_not_found` | 404 |
 | `P0003` | `analysis_expired` | 410 |
 | `40001` | `request_id_conflict` | 409 |
-| `22023` | `answers_invalid`、`dish_not_in_menu`、`confirmation_limit_reached` など | 422 |
+| `22023` | `answers_invalid`、`dish_not_in_menu`、`confirmation_limit_reached`、`validation_error`（`p_request_id`・`p_publish_consent` がnull） | 422 |
 
-### `replace_account_allergens(p_account_id, p_allergen_ids)`（P1）
+### `replace_account_allergens(p_account_id, p_allergen_ids)` → `smallint[]`（P1）
 
 本人のアレルゲンを、1つのトランザクションで全件置き換える。`p_account_id` はFastAPIがアカウント用トークンの `sub` から渡し、クライアントの入力を使わない。
 
 1. アカウント行を `FOR UPDATE` でロックする。ない場合は `P0002`（`account_not_found`）。同じ本人の同時保存を直列化する。
-2. `p_allergen_ids` の重複・未知のIDを検証する。不正なら `22023`（`invalid_allergen_ids`）。空配列は許可する。
+2. `p_allergen_ids`（整数のJSON配列）の形式・重複・未知のIDを検証する。配列以外・null・整数以外の要素も含め、不正なら `22023`（`invalid_allergen_ids`）。空配列は許可する。
 3. 既存の行を削除し、指定のIDを追加する。途中で失敗した場合は元の行が残る。
-4. 置き換え後の `allergen_ids` を返す。
+4. 置き換え後の `allergen_ids` を昇順の配列で返す。
 
-### `replace_account_dietary_restrictions(p_account_id, p_dietary_restriction_ids)`（P1）
+### `replace_account_dietary_restrictions(p_account_id, p_dietary_restriction_ids)` → `smallint[]`（P1）
 
-本人の食事制限を1トランザクションで全件置換する。アカウント行を `FOR UPDATE` でロックし、重複・未知のIDを検証する。失敗時は元の設定を保つ。空配列は許可する。不正IDは `22023`（`invalid_dietary_restriction_ids`）、アカウントなしは `P0002`。本人のIDはAPIがトークンの `sub` から設定する。アレルゲンの置換とは別RPCであり、画面は両方の成功を確認して進む。
+本人の食事制限を1トランザクションで全件置換し、置き換え後のIDを昇順の配列で返す。引数は整数のJSON配列。アカウント行を `FOR UPDATE` でロックし、形式・重複・未知のIDを検証する。失敗時は元の設定を保つ。空配列は許可する。不正IDは `22023`（`invalid_dietary_restriction_ids`）、アカウントなしは `P0002`。本人のIDはAPIがトークンの `sub` から設定する。アレルゲンの置換とは別RPCであり、画面は両方の成功を確認して進む。
 
 ## 公開ビュー
 
@@ -300,9 +309,11 @@ Storageへの画像保存は別の処理になる。DB登録が失敗した場�
 
 | 用途 | 取得範囲 |
 |---|---|
-| 解析・本人履歴の予測 | 同じ店舗・`name_key`・項目IDの全回答。非公開回答も集計し、個別の確認履歴は混ぜない |
+| 解析・本人履歴の予測 | 同じ店舗・`name_key`・項目IDの全回答。非公開回答も集計し、個別の確認履歴は混ぜない。取得SQL例は [Supabase README「予測用の過去回答の取得」](../supabase/README.md#予測用の過去回答の取得api-4517) |
 | 公開集計 | 公開ビュー3つのみ。料理単位の代表表示・集計方法は [API 7](api.md#public-menus) に従う |
-| 本人履歴 | 基礎テーブルを常に `menus.account_id = JWT.sub` で絞る。非公開・未確認・店舗未選択も含む |
+| 本人履歴 | 基礎テーブルを常に `menus.account_id = JWT.sub` で絞る。非公開・未確認・店舗未選択も含む。取得SQL例は [Supabase README「本人履歴の取得」](../supabase/README.md#本人履歴の取得api-1617) |
+
+サーバー用鍵はRLSを迂回するため、上の条件はDBでは強制されない。APIが常に付ける。
 
 所有者と登録時同意は解析時に固定し、ゲストの解析を登録後に移管しない。本人履歴の個別回答はそのメニューの確認だけを返す。画像削除・解析トークン失効後も本人は解析済みテキストと回答を読めるが、回答追加には期限内の解析用トークンが必要。
 
@@ -319,7 +330,8 @@ Storageへの画像保存は別の処理になる。DB登録が失敗した場�
 | ポリシー | `anon`／`authenticated` 用のポリシーは作らない。FastAPIのサーバー用鍵だけで操作する |
 
 - メニューを公開しても、画像は公開しない。
-- 既存のバケットの設定が異なる場合、Storageのマイグレーションは例外で停止する。公開設定を勝手に上書きしない。
+- 既存のバケットの設定が異なる場合、または `menu-images` を対象にしたポリシーがある場合、Storageのマイグレーションは例外で停止する。公開設定を勝手に上書きしない。
+- 容量上限・形式はバケットでも拒否されるが、APIは保存前に検証して413・415を返す。
 - 画像は原則24時間で削除する。開発中は手動削除し、一般公開前に定期削除を実装する。Storage APIを使用し、`storage.objects` への直接DELETEでは削除しない。
 
 ## 権限
@@ -332,13 +344,15 @@ Storageへの画像保存は別の処理になる。DB登録が失敗した場�
 | `service_role` | `allergens`、`dietary_restrictions`、公開ビュー3つ | `select` |
 | `service_role` | `restaurants`、`menus`、`dishes`、`confirmation_sessions`、`confirmation_answers`、`confirmation_dietary_answers` | `select`、`insert` |
 | `service_role` | `menus.id` | `update`（行ロックに必要。実際の更新は不変性トリガーで拒否） |
-| `service_role` | `accounts` | `select`、`insert`、`update(password_hash, updated_at)`（再ハッシュ・行ロック） |
+| `service_role` | `accounts` | `select`、`insert(email, nickname, password_hash, publish_consent, publish_consent_version)`、`update(password_hash, updated_at)`（再ハッシュ・行ロック）。削除は不可 |
 | `service_role` | `account_allergens`・`account_dietary_restrictions` | `select`、`insert`、`delete`（APIの変更処理はRPC経由） |
 | `service_role` | `save_menu_analysis`、`complete_confirmation_session`、`replace_account_allergens`、`replace_account_dietary_restrictions` | `execute` |
 | `anon`／`authenticated` | すべて | なし |
 
 
-`security invoker` の行ロックには、SELECTに加えて対象テーブルの少なくとも1列へのUPDATE権限が必要。メニューは `id` 列に限定して付与し、更新拒否トリガーを維持する。accountsも列権限で同意・本人情報の更新を防ぐ。[PostgreSQL SELECTの権限](https://www.postgresql.org/docs/current/sql-select.html)
+`security invoker` の行ロックには、SELECTに加えて対象テーブルの少なくとも1列へのUPDATE権限が必要。メニューは `id` 列に限定して付与し、更新拒否トリガーを維持する。accountsも列権限で同意・本人情報の更新を防ぎ、INSERTも登録時の入力列に限定してID・日時をDBで決める。[PostgreSQL SELECTの権限](https://www.postgresql.org/docs/current/sql-select.html)
+
+Supabaseが既存のデフォルト権限で `anon`・`authenticated` に与える権限は、マイグレーションで明示的に取り消している。Supabaseのプロジェクト設定で作られるイベントトリガー用関数 `public.rls_auto_enable`（新規テーブルのRLSを自動で有効にする。クラウドのみ）は本仕様の対象外で、マイグレーションでは変更していない（未対応事項は [開発・検証の未決事項](development.md#未決事項)）。
 
 <a id="allergen-master"></a>
 

@@ -12,7 +12,7 @@
 | [DB仕様](database.md) | 11テーブル、マスタ、RPC4つ、公開ビュー3つ、Storageと権限 |
 | 本書 | 構成、準備、開発ルール、検証、未決事項 |
 
-現時点はMarkdownの設計資料のみ。アプリ・SQL・契約ファイルは未作成で、動作確認済みではない。旧設計の検証結果は現行仕様の検証済み根拠には使わない。
+現時点で実装・検証済みなのはDB（`supabase/`）だけで、アプリ（`apps/mobile`・`apps/api`）は未作成。DBは5つのマイグレーションを2026-10-17にSupabaseプロジェクト `Meelyze-plus`（本番兼用）へ適用し、検証結果を [Supabase README](../supabase/README.md) に記録した。`contracts/openapi.yaml` は作成済みだが、実装との照合は未実施。旧設計の検証結果は現行仕様の検証済み根拠には使わない。
 
 ## 構成と準備
 
@@ -25,7 +25,7 @@
 | Google Maps Platform | Places API（New）で店舗候補、Maps JavaScript APIで地図（P1） | サーバー用・ブラウザ用キーを分ける |
 | Vercel | WebとAPIを別プロジェクトで配置 | 下記「デプロイ」 |
 
-1. DB仕様に従ってマイグレーション・検証SQLを作成し、開発DBで検証する。
+1. DB仕様に従ってマイグレーション・検証SQLを作成し、開発DBで検証する（完了。[Supabase README](../supabase/README.md)）。
 2. ExpoとFastAPIを作成し、選んだExpo SDKに対応するNodeと、Vercel対応のPythonを固定する。
 3. 各READMEに記載した依存を追加し、動作確認したバージョンをロックファイルに固定する。
 4. 各アプリの `.env.example` を作り、`.env` へコピーする。APIはPydantic Settingsで明示的に読む。秘密値をGitへ含めず、公開される `EXPO_PUBLIC_` には秘密値を置かない。
@@ -44,12 +44,11 @@
 
 | パス | 作成時に合わせる内容 |
 |---|---|
-| `contracts/openapi.yaml` | API仕様の17操作。解析用・アカウント用のBearer認証を区別し、FastAPIの `/openapi.json` と照合する |
+| `contracts/openapi.yaml` | 作成済み。API仕様の17操作。解析用・アカウント用のBearer認証を区別し、API実装時にFastAPIの `/openapi.json` と照合する |
 | `contracts/menu_analysis.schema.json` | アレルゲン29種・食事制限4種、候補と根拠の組、`translations.en`、料理・価格の制約。未定義フィールドを拒否する |
 | `prompts/menu_analysis.md` | 削除を維持し、この整理では復元しない。VLM実装時はv4として、全マスタを入力し、利用者の選択設定を渡さず、画像内の指示に従わない方針で作成する |
 | `apps/api/.env.example`・`apps/mobile/.env.example` | 各READMEの環境変数。秘密値は空欄にする |
 | `apps/mobile/vercel.json` | Expo WebのSPAリライト |
-| `supabase/migrations/`・`supabase/tests/verify.sql` | DB仕様・セットアップに従う。検証SQLは最後にロールバックする |
 
 ## 開発ルール
 
@@ -87,12 +86,15 @@
 - レート制限は複数インスタンスで共有できる保存先を使う。プロセス内カウンターだけには依存しない。
 - 解析POSTは自動再送しない。確認保存で結果が不明な場合は、同じ内容・`request_id` で再送する。
 - 画像・Authorization・トークン・座標・メール・パスワード・個人の設定をログに残さない。解析・確認・アカウント・公開集計のレスポンスは `Cache-Control: no-store`。
+- Supabaseは `Meelyze-plus`（Project Ref `pqegjvcyfnmqpmwxaogp`、`ap-southeast-1`）を**本番兼用**で使う。DB変更は [Supabase README の適用手順](../supabase/README.md#適用手順クラウド) に従い、対象と差分を提示して承認を得てから `db push` する。データを書き込む試験はこのプロジェクトで行わず、ローカル（`supabase start`）か使い捨てのプロジェクトで行う。
 
 ## 検証
 
 以下は実装後に行う検証。外部サービスを使わないテストではGoogle・Geminiをモックにする。
 
 ### DB
+
+2026-10-17に以下を実施した（ローカル：全項目、`Meelyze-plus`：適用・読取専用チェック・ロールバックする検証SQL）。手順・結果・未実施事項は [Supabase README](../supabase/README.md#実施結果2026-10-17) を参照する。
 
 - 空のDBへ順番に適用でき、2回目の `db push` で差分が出ないこと。11テーブル・RPC4つ・公開ビュー3つと29＋4種のマスタが仕様に一致すること。
 - 解析・確認・本人設定置換がそれぞれ原子的で、途中失敗時に部分保存されないこと。料理の配列順を保存・再取得できること。
@@ -149,6 +151,7 @@
 | 実装時 | 依存バージョン、共有レート制限の保存先、地図ラッパー、Root Directory外のファイルの同梱、正式な配色 |
 | 外部サービス利用前 | Googleの帰属表示・利用条件・料金、Geminiの実キーでの動作 |
 | 一般公開前 | 利用条件・プライバシーポリシー、画像の定期削除、本人履歴の保持期間、アカウント削除、利用者・店員の同意撤回と過去公開分への反映、回答の訂正・削除 |
+| 一般公開前（Supabase設定） | Authの新規登録の停止（Supabase Authは使わないが既定で有効）、DB接続のSSL強制、DB接続元の制限、Security Advisorが警告するSupabase既定の関数 `public.rls_auto_enable` の `anon`・`authenticated` への実行権限の扱い。2026-10-17時点ですべて未対応 |
 | ハッカソン後 | 店員なりすまし・誤回答対策、料理名の表記ゆれ、予測の重みの校正、JWTの即時失効。他のP2項目は要件を参照 |
 
 MVPには登録後の同意変更API・店員の公開取消手段・JWTの即時失効を設けていない。②の利用条件確認、登録時の公開同意、ブラウザの位置情報許可は別々に扱う。
