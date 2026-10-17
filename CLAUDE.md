@@ -7,8 +7,8 @@
 ## 読む資料
 
 - 着手前：`requirements.md`、`docs/development.md`
-- API変更：`docs/api.md`（全APIの入出力・処理）、`contracts/openapi.yaml`（未作成）、`apps/api/README.md`（環境設定）
-- DB変更：`docs/database.md`、`supabase/README.md`、`supabase/migrations/`
+- API変更：`docs/api.md`（全APIの入出力・処理）、`contracts/openapi.yaml`（作成済み。実装との照合は未実施）、`apps/api/README.md`（環境設定・Supabaseの利用・DBエラーの変換）
+- DB変更：`docs/database.md`、`supabase/README.md`、`supabase/migrations/`、`supabase/tests/`（検証）
 - アカウント変更：`docs/api.md` のAPI 8〜12・14〜17、`docs/database.md` のaccounts・本人設定・読み取り範囲
 - 画面変更：`docs/screens.md`、`apps/mobile/README.md`（環境設定）
 - VLM変更：`docs/api.md` のAI候補・食事制限、`docs/development.md` の「未作成のファイル」。`prompts/menu_analysis.md`・`contracts/menu_analysis.schema.json` は未作成
@@ -23,7 +23,7 @@
 - MVPの利用者画面は英語のみ、⑬・⑭は日本語。アレルゲンは `docs/database.md` のアレルゲンマスタ29品目、食事制限は4種を選択式で扱う。⑤・⑰で両方を編集でき、Other・自由入力は対象外。
 - DBは確認用8＋アカウント用3＝11テーブルとする。店舗スキップ、複数料理・複数項目、端末内の複数人プロファイルを維持する。
 - アカウント登録（メール・ニックネーム・パスワード）とログイン（メール・パスワード）は任意機能とする。未ログインでもP0の流れを完了できる。
-- アプリ本体は未作成。配置は `apps/mobile/`（Expo）、`apps/api/`（FastAPI）、`supabase/migrations/`（SQL・DB変更履歴）とする。既存コードがある環境では、構成とロックファイルを先に確認する。
+- アプリ本体（`apps/mobile/`・`apps/api/`）は未作成。DBは `supabase/migrations/` の5件を作成し、Supabaseプロジェクト `Meelyze-plus`（本番兼用）に適用済み。配置は `apps/mobile/`（Expo）、`apps/api/`（FastAPI）、`supabase/migrations/`（SQL・DB変更履歴）とする。既存コードがある環境では、構成とロックファイルを先に確認する。
 - 技術変更、機能削除、公開範囲変更は理由と影響を示す。仕様にない機能を追加しない。
 - 日常的な実装判断は各仕様の上限と `docs/development.md` の初期値で進め、変更時は該当する正本を更新する。
 
@@ -46,7 +46,7 @@
 - 解析結果は `save_menu_analysis` で一括保存する。Storage保存後にDB登録が失敗したら画像を削除する。
 - 公開メニューの取得は公開ビューを使い、APIで返却項目を限定する。公開「いいえ」の回答の内容・件数は公開APIに含めない。画像は公開しない。
 - DB変更は `supabase/migrations/` に新しいファイルを追加して行う。適用済みのマイグレーションは編集しない。
-- SQLを本番へ実行したり、既存テーブルを削除したりする前に対象環境と変更内容を確認する。
+- SQLを本番へ実行したり、既存テーブルを削除したりする前に対象環境と変更内容を確認する。`Meelyze-plus` は本番兼用のため、`db push` も対象と差分を示して承認を得てから行い、データを書き込む試験はローカル（`supabase start`）で行う。
 
 ## 実装・検証
 
@@ -57,4 +57,4 @@
 - 認証（他人の解析用トークン・期限切れ・ログイン・他人のアカウントへの操作を含む）、公開条件、二重送信、未回答、予測の計算を中心に検証する。変更と無関係な大規模リファクタリングは行わない。
 - 完了報告には変更点、実施した検証、未検証事項を簡潔に書く。未実装を実装済みと表現しない。
 
-起動・テストコマンドは `docs/development.md` を参照する。まだ存在しないアプリの起動成功を報告しない。
+起動・テストコマンドは `docs/development.md`、DBの起動・適用・検証は `supabase/README.md` を参照する。まだ存在しないアプリの起動成功を報告しない。

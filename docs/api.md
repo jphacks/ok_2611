@@ -2,7 +2,7 @@
 
 `apps/api`（FastAPI）が提供するAPIの一覧、各APIの内容と使い方、処理ルールを記す。
 
-- 本書を基に `contracts/openapi.yaml`（未作成）を作成し、実装の `/openapi.json` と一致させる。
+- 本書を基に作成した `contracts/openapi.yaml` を、実装の `/openapi.json` と一致させる（照合はAPI実装時）。
 - 技術スタック・環境設定は [apps/api/README.md](../apps/api/README.md) を参照する。
 - アプリと `prompts/menu_analysis.md` は未作成。本書のURL・例・プロンプトv4は設計であり、動作確認済みではない。VLMの実装前にプロンプトとJSON Schemaを作成する。
 
@@ -63,7 +63,7 @@
 | 429 | レート制限（解析、周辺検索、登録、ログイン失敗） | `rate_limited` |
 | 502 / 503 / 504 | AI出力の不正／外部サービス利用不能／時間超過 | `invalid_ai_output`、`service_unavailable`、`timeout` |
 
-DB関数のSQLSTATEは次のように変換する：`28000`→401、`P0002`→404、`P0003`→410、`40001`→409、`22023`→422。`accounts.email` の一意制約違反（`23505`）は409 `email_already_registered`。その他の制約違反は、内容に応じて422か409にする。
+DB関数のSQLSTATEは次のように変換する：`28000`→401、`P0002`→404、`P0003`→410、`40001`→409、`22023`→422。ただし `P0002` の `account_not_found` は、アカウント用トークンの `sub` に当たるアカウントがないことを示すため、トークン検証の失敗と同じ401 `unauthorized` にする。`accounts.email` の一意制約違反（`23505`）は409 `email_already_registered`。その他の制約違反は、内容に応じて422か409にする。PostgRESTが付けるHTTPステータスはこの対応と一致しないため使わない（[API README](../apps/api/README.md#dbエラーの変換)）。
 
 ## API一覧
 
