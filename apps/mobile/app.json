@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Meelyze+",
+    "slug": "meelyze-plus",
+    "scheme": "meelyze",
+    "icon": "./assets/meelyze-icon.png",
+    "platforms": ["web"],
+    "web": {
+      "output": "single",
+      "name": "Meelyze+",
+      "bundler": "metro",
+      "favicon": "./assets/meelyze-icon.png"
+    },
+    "plugins": ["expo-router"]
+  }
+}
