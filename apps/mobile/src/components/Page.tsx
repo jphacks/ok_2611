@@ -1,49 +1,29 @@
 import type { PropsWithChildren } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { BrandLogo } from "./BrandLogo";
+import { ScrollView, StyleSheet, Text } from "react-native";
 import { colors } from "../theme";
 
-type PageProps = PropsWithChildren<{ step?: string; title?: string; subtitle?: string; showBrand?: boolean }>;
+type PageProps = PropsWithChildren<{ step?: string; title?: string; subtitle?: string }>;
 
-export function Page({ children, step, title, subtitle, showBrand = true }: PageProps) {
+export function Page({ children, step, title, subtitle }: PageProps) {
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.canvas}>
-      <View style={styles.phone}>
-        {showBrand || step ? (
-          <View style={styles.brandRow}>
-            {showBrand ? <BrandLogo width={140} variant="header" /> : null}
-            {step ? <Text style={styles.step}>{step}</Text> : null}
-          </View>
-        ) : null}
-        {title ? <Text style={styles.title}>{title}</Text> : null}
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-        {children}
-      </View>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {step ? <Text style={styles.step}>{step}</Text> : null}
+      {title ? <Text style={styles.title}>{title}</Text> : null}
+      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      {children}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.background },
-  canvas: { minHeight: "100%", alignItems: "center", justifyContent: "center", padding: 20 },
-  phone: {
-    width: "100%",
-    maxWidth: 440,
-    minHeight: 620,
-    backgroundColor: colors.white,
-    borderRadius: 28,
-    paddingHorizontal: 28,
-    paddingTop: 30,
+  scroll: { flex: 1, backgroundColor: colors.white },
+  content: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 24,
     paddingBottom: 32,
-    borderWidth: 1,
-    borderColor: colors.line,
-    shadowColor: "#173C2D",
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
   },
-  brandRow: { flexDirection: "row", alignItems: "center", marginBottom: 46 },
-  step: { color: colors.muted, fontSize: 12, marginLeft: "auto", fontWeight: "600" },
+  step: { color: colors.muted, fontSize: 12, alignSelf: "flex-end", fontWeight: "600", marginBottom: 20 },
   title: { color: colors.ink, fontSize: 30, fontWeight: "800", letterSpacing: -1.1, lineHeight: 36 },
   subtitle: { color: colors.muted, fontSize: 14, lineHeight: 22, marginTop: 10, marginBottom: 29 },
 });

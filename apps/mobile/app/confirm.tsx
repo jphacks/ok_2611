@@ -99,53 +99,51 @@ export default function ConfirmScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.canvas}>
-      <View style={styles.phone}>
-        <View style={styles.staffHeader}><Text style={styles.staffHeaderText}>This screen is for restaurant staff</Text></View>
-        <View style={styles.body}>
-          <Text style={styles.heading}>アレルギーの確認のお願い</Text>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.pageContent}>
+      <View style={styles.staffHeader}><Text style={styles.staffHeaderText}>This screen is for restaurant staff</Text></View>
+      <View style={styles.body}>
+        <Text style={styles.heading}>アレルギーの確認のお願い</Text>
 
-          {!dish || !menu || questions.length === 0 ? (
-            <View style={styles.missing}>
-              <Text style={styles.error}>確認対象の料理とアレルゲンを読み込めませんでした。</Text>
-            </View>
-          ) : (
-            <>
-              <Text style={styles.intro}>こちらのお客様は<Text style={styles.bold}>{questions.map((item) => item.name).join("・")}</Text>のアレルギーがあります。{"\n"}「<Text style={styles.bold}>{dish.name}</Text>」に、次の食材が含まれているか教えてください。</Text>
-              <Text style={styles.help}>「ない」は原材料に含まれない場合です。器具を共有する場合は「コンタミネーション」を選んでください。</Text>
+        {!dish || !menu || questions.length === 0 ? (
+          <View style={styles.missing}>
+            <Text style={styles.error}>確認対象の料理とアレルゲンを読み込めませんでした。</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.intro}>こちらのお客様は<Text style={styles.bold}>{questions.map((item) => item.name).join("・")}</Text>のアレルギーがあります。{"\n"}「<Text style={styles.bold}>{dish.name}</Text>」に、次の食材が含まれているか教えてください。</Text>
+            <Text style={styles.help}>「ない」は原材料に含まれない場合です。器具を共有する場合は「コンタミネーション」を選んでください。</Text>
 
-              {questions.map((question) => (
-                <View key={question.allergenId} style={styles.question}>
-                  <Text style={styles.questionName}>{question.name}</Text>
-                  <View style={styles.choiceGrid}>
-                    {choices.map((choice) => {
-                      const selected = answers[question.allergenId] === choice.answer;
-                      return (
-                        <Pressable
-                          key={choice.answer}
-                          accessibilityRole="radio"
-                          accessibilityState={{ checked: selected }}
-                          accessibilityLabel={`${question.name}: ${choice.label}`}
-                          onPress={() => setAnswers((current) => ({ ...current, [question.allergenId]: choice.answer }))}
-                          style={[styles.choice, selected && styles.selectedChoice]}
-                        >
-                          <View style={[styles.radio, selected && styles.selectedRadio]}>{selected ? <Text style={styles.check}>✓</Text> : null}</View>
-                          <Text style={styles.choiceLabel}>{choice.label}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+            {questions.map((question) => (
+              <View key={question.allergenId} style={styles.question}>
+                <Text style={styles.questionName}>{question.name}</Text>
+                <View style={styles.choiceGrid}>
+                  {choices.map((choice) => {
+                    const selected = answers[question.allergenId] === choice.answer;
+                    return (
+                      <Pressable
+                        key={choice.answer}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: selected }}
+                        accessibilityLabel={`${question.name}: ${choice.label}`}
+                        onPress={() => setAnswers((current) => ({ ...current, [question.allergenId]: choice.answer }))}
+                        style={[styles.choice, selected && styles.selectedChoice]}
+                      >
+                        <View style={[styles.radio, selected && styles.selectedRadio]}>{selected ? <Text style={styles.check}>✓</Text> : null}</View>
+                        <Text style={styles.choiceLabel}>{choice.label}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
-              ))}
+              </View>
+            ))}
 
-              {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-              <View style={styles.spacer} />
-              <Pressable accessibilityRole="button" disabled={!complete || validating} onPress={() => void completeAnswers()} style={[styles.finishButton, (!complete || validating) && styles.disabledButton]}>
-                <Text style={styles.finishText}>{validating ? "回答を確認中…" : "回答を終える"}</Text>
-              </Pressable>
-            </>
-          )}
-        </View>
+            {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+            <View style={styles.spacer} />
+            <Pressable accessibilityRole="button" disabled={!complete || validating} onPress={() => void completeAnswers()} style={[styles.finishButton, (!complete || validating) && styles.disabledButton]}>
+              <Text style={styles.finishText}>{validating ? "回答を確認中…" : "回答を終える"}</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <Modal transparent animationType="fade" visible={consentOpen} onRequestClose={() => setConsentOpen(false)}>
@@ -168,8 +166,7 @@ export default function ConfirmScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.white },
-  canvas: { minHeight: "100%", alignItems: "center" },
-  phone: { width: "100%", maxWidth: 440, minHeight: 720, flexGrow: 1, backgroundColor: colors.white },
+  pageContent: { flexGrow: 1, backgroundColor: colors.white },
   staffHeader: { backgroundColor: colors.green, alignItems: "center", paddingTop: 20, paddingBottom: 20 },
   staffHeaderText: { color: colors.white, fontSize: 15, fontWeight: "700" },
   body: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 24 },

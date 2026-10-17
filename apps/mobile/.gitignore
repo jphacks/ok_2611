@@ -3,6 +3,7 @@ node_modules/
 dist/
 .env
 
-# Keep local Markdown notes out of Git. The mobile coding guide is the only exception.
+# Keep local Markdown notes out of Git, except the README and mobile coding guide.
 *.md
 !/CLAUDE.md
+!/README.md

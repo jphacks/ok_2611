@@ -1,7 +1,7 @@
 import { createElement, useCallback, useRef, useState, type ChangeEvent } from "react";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { useCapture } from "../../src/features/capture/CaptureContext";
 import { prepareMenuImage } from "../../src/features/capture/image";
@@ -62,7 +62,7 @@ export default function CaptureScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.darkArea}>
         {restaurantName ? <Text style={styles.restaurant}>{restaurantName}</Text> : null}
         <View style={styles.cameraFrame}>
@@ -114,15 +114,16 @@ export default function CaptureScreen() {
         style: { display: "none" },
         "aria-label": "Choose a menu image",
       })}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, width: "100%", maxWidth: 440, alignSelf: "center", backgroundColor: colors.white },
-  darkArea: { flex: 1, minHeight: 590, backgroundColor: "#101A16", alignItems: "center", paddingHorizontal: 18, paddingTop: 32, paddingBottom: 16 },
+  screen: { flex: 1, backgroundColor: colors.white },
+  content: { flexGrow: 1 },
+  darkArea: { flex: 1, minHeight: 440, backgroundColor: "#101A16", alignItems: "center", paddingHorizontal: 18, paddingTop: 32, paddingBottom: 16 },
   restaurant: { color: colors.white, textAlign: "center", fontSize: 13, backgroundColor: "#2D3934", paddingVertical: 9, paddingHorizontal: 20, borderRadius: 22, overflow: "hidden", marginBottom: 24 },
-  cameraFrame: { flex: 1, width: "100%", minHeight: 300, maxHeight: 590, overflow: "hidden", borderRadius: 18, borderWidth: 3, borderColor: colors.green, backgroundColor: "#13231D", justifyContent: "center" },
+  cameraFrame: { flex: 1, width: "100%", minHeight: 240, maxHeight: 590, overflow: "hidden", borderRadius: 18, borderWidth: 3, borderColor: colors.green, backgroundColor: "#13231D", justifyContent: "center" },
   camera: { width: "100%", height: "100%" },
   cameraFallback: { padding: 24, gap: 16 },
   cameraMessage: { color: colors.white, textAlign: "center", lineHeight: 22 },
