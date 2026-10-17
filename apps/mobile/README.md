@@ -11,7 +11,7 @@ Meelyze+ のフロントエンド。React Native + Expoで作るスマートフ�
 | 用途 | 現在の構成 | 備考 |
 |---|---|---|
 | 言語 | TypeScript 5.9.3 | `tsc --noEmit` で型チェック |
-| 実行環境 | Node.js 24系 | `package.json` は `>=24.3.0 <25`、`.nvmrc` は `24` |
+| 実行環境 | Node.js 24系 | `package.json` は `24.x`（Vercelは範囲指定を受け付けないためメジャー指定）、`.nvmrc` は `24` |
 | フレームワーク | Expo SDK 58（58.0.14）、React 19.3.0、React Native 0.88.0 | `react-native-web` でWeb向けに出力 |
 | ルーティング | Expo Router | `app.json` は `web.output: "static"`、`apiRoutes: true` |
 | 外部API呼び出し | `fetch` | FastAPIを呼ぶ。Supabase・Storage・Gemini・DBへ直接接続しない |
