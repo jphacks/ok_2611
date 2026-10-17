@@ -9,7 +9,7 @@ export function startAccountSession(auth: AuthResponse, allergenIds: number[]): 
   clearMenuAnalyses();
   clearConfirmationResults();
   clearSelectedAllergenIds();
-  saveAccountToken(auth.access_token, auth.account.id);
+  saveAccountToken(auth.access_token, auth.account.id, auth.expires_at);
   saveAccountDetails({ nickname: auth.account.nickname, email: auth.account.email, preview: false });
   // An empty saved list does not mean "no allergies"; ⑤ asks for a selection again.
   if (allergenIds.length > 0) saveSelectedAllergenIds(allergenIds);

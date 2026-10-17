@@ -60,6 +60,8 @@ Meelyze+ のフロントエンド。React Native + Expoで作るスマートフ�
 | `api/index.ts` | VercelからExpoのサーバー処理へ渡すハンドラー |
 | `.env.example`、`vercel.json` | 環境変数の例、Vercelのビルド・実行設定 |
 
+未ログインで開ける画面は①〜④（`/`・`/onboarding`・`/register`・`/login`）だけ。それ以外のURLへ直接アクセスした場合、`app/_layout.tsx` が確認の間は画面をロゴで覆い、アカウント用トークンがない、またはログイン時の `expires_at` を過ぎていれば `/login` へ置き換える（期限切れのトークンは破棄）。静的HTMLには各画面の中身を出力しない。これは表示の制御であり、認可はAPIがトークンで判定する。
+
 Map・Scan・Profileのフッターは `src/components/BottomNavigation.tsx` に共通化し、`app/_layout.tsx` から `/map`・`/capture`・`/menu`・`/profiles`・`/profiles/edit` に表示する。画面下部に固定し、本文側で72px＋下部セーフエリアを確保する。最大幅は本文と同じ440px。選択中の項目を緑色で示し、初回ツアー中は非表示にする。
 
 ## セットアップ・コマンド

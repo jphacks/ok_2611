@@ -1,5 +1,6 @@
-import { Stack, useGlobalSearchParams, usePathname } from "expo-router";
+import { router, Stack, useGlobalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
+import { hasActiveAccountSession } from "../src/api/auth";
 import { BrandLogo } from "../src/components/BrandLogo";
 import { BottomNavigation, bottomNavigationHeight, getNavigationTab } from "../src/components/BottomNavigation";
 import { CaptureProvider } from "../src/features/capture/CaptureContext";
@@ -8,6 +9,8 @@ import { Walkthrough } from "../src/features/onboarding/Walkthrough";
 import { colors } from "../src/theme";
 
 const headerHeight = 74;
+// ①–④ are the only screens open without logging in. Every other route, including unknown ones, needs a session.
+const publicPaths = new Set(["/", "/onboarding", "/register", "/login"]);
 
 export default function RootLayout() {
   const [showTour, setShowTour] = useState<boolean | null>(null);
@@ -16,7 +19,11 @@ export default function RootLayout() {
   const { lang } = useGlobalSearchParams<{ lang?: string | string[] }>();
   const tourLanguage = lang === "ja" ? "ja" : "en";
   const showHeader = showTour === false && pathname !== "/";
-  const activeTab = showTour === false ? getNavigationTab(pathname) : null;
+  const requiresLogin = !publicPaths.has(pathname);
+  // The pathname whose login check passed. Until it matches, the screen stays covered so a direct URL never shows it.
+  const [allowedPath, setAllowedPath] = useState<string | null>(null);
+  const covered = showTour === false && requiresLogin && allowedPath !== pathname;
+  const activeTab = showTour === false && !covered ? getNavigationTab(pathname) : null;
 
   useEffect(() => {
     // Avoid claiming a second visit when development Strict Mode replays effects.
@@ -24,6 +31,12 @@ export default function RootLayout() {
     checkedVisit.current = true;
     setShowTour(claimFirstVisit());
   }, []);
+
+  useEffect(() => {
+    if (showTour !== false || !requiresLogin) return;
+    if (hasActiveAccountSession()) setAllowedPath(pathname);
+    else router.replace("/login");
+  }, [showTour, requiresLogin, pathname]);
 
   return (
     <CaptureProvider>
@@ -42,7 +55,7 @@ export default function RootLayout() {
         paddingBottom: `calc(${activeTab ? bottomNavigationHeight : 0}px + env(safe-area-inset-bottom, 0px))`,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
-        display: "flex", flexDirection: "column", width: "100%",
+        display: "flex", flexDirection: "column", width: "100%", position: "relative",
         maxWidth: 440, margin: "0 auto", backgroundColor: colors.white,
       }}>
         {showTour === null ? (
@@ -54,6 +67,14 @@ export default function RootLayout() {
         ) : (
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.white } }} />
         )}
+        {covered ? (
+          <div role="status" aria-label="Checking login" style={{
+            position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center",
+            backgroundColor: colors.white,
+          }}>
+            <BrandLogo width={140} variant="header" />
+          </div>
+        ) : null}
       </main>
       {activeTab ? <BottomNavigation activeTab={activeTab} /> : null}
     </CaptureProvider>

@@ -31,6 +31,7 @@ export type AccountDetails = { nickname: string; email: string; preview: boolean
 const accountDetailsKey = "meelyze.account_details";
 const accountTokenKey = "meelyze.account_token";
 const accountIdKey = "meelyze.account_id";
+const accountExpiresKey = "meelyze.account_token_expires_at";
 
 export function saveAccountDetails(details: AccountDetails): void {
   if (typeof window === "undefined") return;
@@ -97,10 +98,11 @@ export function isAccountAuthError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401;
 }
 
-export function saveAccountToken(token: string, accountId?: string): void {
+export function saveAccountToken(token: string, accountId?: string, expiresAt?: string): void {
   if (typeof window !== "undefined") {
     window.sessionStorage.setItem(accountTokenKey, token);
     if (accountId) window.sessionStorage.setItem(accountIdKey, accountId);
+    if (expiresAt) window.sessionStorage.setItem(accountExpiresKey, expiresAt);
   }
 }
 
@@ -112,10 +114,24 @@ export function getAccountId(): string | null {
   return typeof window === "undefined" ? null : window.sessionStorage.getItem(accountIdKey);
 }
 
+// True while this tab holds an account token that has not passed the expires_at returned at login.
+// This only decides which screens to show; the API still verifies the token on every request.
+export function hasActiveAccountSession(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!getAccountToken()) return false;
+  const expiresAt = Date.parse(window.sessionStorage.getItem(accountExpiresKey) ?? "");
+  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+    clearAccountSession();
+    return false;
+  }
+  return true;
+}
+
 // Returns the tab to the logged-out state. Device-only data such as the allergen selection stays.
 export function clearAccountSession(): void {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(accountTokenKey);
   window.sessionStorage.removeItem(accountIdKey);
+  window.sessionStorage.removeItem(accountExpiresKey);
   window.sessionStorage.removeItem(accountDetailsKey);
 }
