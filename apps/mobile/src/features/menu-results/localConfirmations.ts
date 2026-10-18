@@ -11,6 +11,13 @@ type Confirmation = {
 const prefix = "meelyze.local-staff-confirmations.";
 const allowed = new Set<StaffAnswer>(["contains", "shared_utensils", "does_not_contain", "unknown"]);
 
+export function clearLocalConfirmations(): void {
+  if (typeof window === "undefined") return;
+  for (const key of Object.keys(window.sessionStorage)) {
+    if (key.startsWith(prefix)) window.sessionStorage.removeItem(key);
+  }
+}
+
 function read(menuId: string): Record<string, Confirmation> {
   if (typeof window === "undefined") return {};
   try {
