@@ -1,5 +1,6 @@
 import { ApiError, requestJson } from "./client";
 import { apiEndpoints, isEndpointConfigured } from "./endpoints";
+import { forgetPlace } from "../features/places/placeMemory";
 
 export { ApiError } from "./client";
 
@@ -129,6 +130,7 @@ export function hasActiveAccountSession(): boolean {
 
 // Returns the tab to the logged-out state. Device-only data such as the allergen selection stays.
 export function clearAccountSession(): void {
+  forgetPlace();
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(accountTokenKey);
   window.sessionStorage.removeItem(accountIdKey);

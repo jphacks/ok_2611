@@ -8,6 +8,7 @@ import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { useCapture } from "../../src/features/capture/CaptureContext";
 import { saveMenuAnalysis } from "../../src/features/capture/analysis";
 import { getSelectedAllergenIds } from "../../src/features/profile/selection";
+import { rememberedPlaceName } from "../../src/features/places/placeMemory";
 import { colors } from "../../src/theme";
 
 function messageFor(error: unknown): string {
@@ -16,7 +17,7 @@ function messageFor(error: unknown): string {
   if (error.code === "login_required") return "Log in before analyzing a menu.";
   if (error.status === 401) return "Your login expired. Log in again before analyzing.";
   if (error.code === "timeout") return "Analysis took too long. Please try again.";
-  if (error.status === 404) return "The selected restaurant could not be found. Retake without a restaurant.";
+  if (error.status === 404) return "The selected restaurant could not be found. Retake, then change the restaurant or skip.";
   if (error.status === 413 || error.status === 415) return "This image cannot be uploaded. Choose a smaller JPEG or PNG photo.";
   if (error.status === 422) return "The menu could not be read. Retake a clearer photo.";
   if (error.status === 429) return "Too many requests. Please wait before trying again.";
@@ -25,14 +26,12 @@ function messageFor(error: unknown): string {
 }
 
 export default function CapturePreviewScreen() {
-  const { google_place_id: placeId, restaurant_name: restaurantName } = useLocalSearchParams<{
-    google_place_id?: string; restaurant_name?: string;
-  }>();
+  const { google_place_id: placeId } = useLocalSearchParams<{ google_place_id?: string }>();
   const { image, clearImage } = useCapture();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [needsLogin, setNeedsLogin] = useState(false);
-  const captureRoute = { pathname: "/capture" as const, params: placeId ? { google_place_id: placeId, restaurant_name: restaurantName } : {} };
+  const captureRoute = { pathname: "/capture" as const, params: { google_place_id: placeId || "" } };
 
   useFocusEffect(useCallback(() => () => clearImage(), []));
 
@@ -65,7 +64,7 @@ export default function CapturePreviewScreen() {
 
   if (!image) {
     return (
-      <Page step="10 / Review" title="No photo to review" subtitle="Take or choose a menu photo first.">
+      <Page title="No photo to review" subtitle="Take or choose a menu photo first.">
         <PrimaryButton label="Open camera" onPress={() => router.replace(captureRoute)} />
       </Page>
     );
@@ -74,7 +73,7 @@ export default function CapturePreviewScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.pageContent}>
       <Text style={styles.title}>Analyze this photo?</Text>
-      <Text style={styles.subtitle}>{restaurantName || "No restaurant selected"} · Check the menu text is sharp and readable.</Text>
+      <Text style={styles.subtitle}>{placeId ? rememberedPlaceName(placeId) : "No restaurant selected"} · Check the menu text is sharp and readable.</Text>
       <View style={styles.photoFrame}>
         <Image source={{ uri: image.url }} resizeMode="contain" style={styles.photo} accessibilityLabel="Photo of the menu to analyze" />
       </View>

@@ -20,7 +20,7 @@ Meelyze+ のフロントエンド。React Native + Expoで作るスマートフ�
 | 画像加工 | ブラウザのCanvas API | JPEGへの変換・縮小・圧縮 |
 | 端末内の保存 | 主に `sessionStorage` | 撮影画像はReact Contextのメモリ内。店員同意の記憶には一部 `localStorage` も使用 |
 | 表示言語 | 利用者向け英語・店員向け日本語 | 文言は各画面・`src/content/` 等に配置。`src/i18n/` は未作成 |
-| 地図・位置情報 | 未実装 | `/map` は仮画面。Google Maps・Geolocation APIは未接続 |
+| 地図・位置情報 | Geolocation API、Google Maps JavaScript API（Advanced Markers） | ⑥の地図・ピンと⑧の候補はFastAPIの周辺検索を使用。Maps SDKは依存を追加せず `src/features/map/googleMaps.ts` で読み込む |
 | デプロイ設定 | Vercel、`expo-server` | Root Directoryは `apps/mobile`。API Routesを処理するサーバーを含む |
 
 依存の解決済みバージョンは [package-lock.json](package-lock.json) で管理する。依存変更時はロックファイルを更新し、型チェックとWebビルドを確認する。
@@ -34,8 +34,9 @@ Meelyze+ のフロントエンド。React Native + Expoで作るスマートフ�
 | ③ `/register` | `POST /auth/register`。成功時に前のアカウントのタブ内データを消してトークンを保存し⑤へ。公開同意はユーザー指示により現状 `true` 固定（画面での選択欄なし。仕様の③とは差分） |
 | ④ `/login` | `POST /auth/login` の後に `GET /me/allergens` で保存済みアレルゲンを取得し、⑤の初期選択にして進む |
 | ⑤ `/profiles/setup` | アレルゲン29品目から1品目以上を選択（保存済みの選択を初期表示）。補助APIで検証後、`PUT /me/allergens` で保存してからタブ内にも保持 |
-| ⑥ `/map` | `Under construction.` の仮画面。店舗確認画面へ進める |
-| ⑧ `/places/select` | 引き継がれた店舗候補の確認、またはスキップ。候補を検索・取得する処理は未実装 |
+| ⑥ `/map` | タイトル右端の再読み込みボタンと説明文の下に、現在地中心のGoogle Mapsをフッターまで全面表示し、周辺店舗（半径500m・最大20件）をピンで表示。公開メニューありを緑の塗りピン＋料理数、なしを灰色の白抜きピンで区別。現在地へ戻るボタンあり。キー未設定・SDK障害時だけ地図の領域に候補の一覧を表示 |
+| ⑦ `/map` 上のシート | ピン（地図を表示できない場合は一覧）から開き、`GET /places/{id}/public-menus` の集約結果を表で表示（Dish・Price・AI estimate・Public staff answers・Notes）。空状態・失敗と再試行・アレルゲン未選択の案内、撮影ボタンで⑧へ候補を渡す。本人履歴欄は未実装 |
+| ⑧ `/places/select` | 現在地周辺500mの候補をFastAPIから取得（⑥の地図と共通）。店名・住所・距離から選択してConfirm、またはSkip。拒否・空・失敗・再検索に対応 |
 | ⑨ `/capture`、⑩ `/capture/preview` | 撮影・画像選択、画像加工、写真確認、再撮影。`Analyze` で `POST /menus/analyze`。401ではトークンを破棄してログインを案内 |
 | ⑪ `/menu?id=<menu_id>`、⑫ 詳細シート | 表示のたびに `GET /menus/{menu_id}`（解析用トークン）で取り直し、`current_answer` の有無で確認済み料理とAI推定の料理を分ける。取得結果でタブ内のキャッシュを更新。410は再撮影を案内 |
 | ⑬ `/confirm?id=<menu_id>&dish_id=<dish_id>`、⑭ 同意モーダル | 1料理×選択アレルゲンの4択（含まれる／同じ料理器具を使っている／含まれない／わからない）。全問回答を検証し、⑭の選択で `POST /menus/{menu_id}/confirmations` に回答と店員の公開可否を一括送信。`request_id` は下書きごとに作り、回答を変えない再送では同じIDを使う。成功後「お客様に端末をお返しください」→⑮。記憶済みの店員同意を再利用する処理はユーザー指示により維持（仕様の⑭とは差分） |
@@ -52,6 +53,8 @@ Meelyze+ のフロントエンド。React Native + Expoで作るスマートフ�
 | `src/api/` | FastAPIの接続先、認証・設定保存・解析・結果取得のクライアントと型 |
 | `src/features/capture/` | 撮影画像のメモリ保持、画像加工、解析結果のタブ内保存 |
 | `src/features/profile/` | アレルゲン選択UIとタブ内保存 |
+| `src/features/map/` | Maps SDKの読み込み、地図・ピン、⑦の公開メニューシート・表と表示文言 |
+| `src/features/places/` | 現在地取得、選択店舗の店名・帰属表示のメモリ内引継ぎ |
 | `src/features/menu-results/` | 表示用データの整形、料理詳細シート、デモデータ、店員回答・同意の仮保存 |
 | `src/components/` | ボタン、入力欄、共通ページ、ロゴ、利用規約モーダル |
 | `src/content/` | アレルゲンの選択肢、利用規約の文面 |
@@ -62,7 +65,7 @@ Meelyze+ のフロントエンド。React Native + Expoで作るスマートフ�
 
 未ログインで開ける画面は①〜④（`/`・`/onboarding`・`/register`・`/login`）だけ。それ以外のURLへ直接アクセスした場合、`app/_layout.tsx` が確認の間は画面をロゴで覆い、アカウント用トークンがない、またはログイン時の `expires_at` を過ぎていれば `/login` へ置き換える（期限切れのトークンは破棄）。静的HTMLには各画面の中身を出力しない。これは表示の制御であり、認可はAPIがトークンで判定する。
 
-Map・Scan・Profileのフッターは `src/components/BottomNavigation.tsx` に共通化し、`app/_layout.tsx` から `/map`・`/capture`・`/menu`・`/profiles`・`/profiles/edit` に表示する。画面下部に固定し、本文側で72px＋下部セーフエリアを確保する。最大幅は本文と同じ440px。選択中の項目を緑色で示し、初回ツアー中は非表示にする。
+Map・Scan・Profileのフッターは `src/components/BottomNavigation.tsx` に共通化し、`app/_layout.tsx` から `/map`・`/places/select`・`/capture`・`/menu`・`/profiles`・`/profiles/edit` に表示する。画面下部に固定し、本文側で72px＋下部セーフエリアを確保する。最大幅は本文と同じ440px。選択中の項目を緑色で示し、初回ツアー中は非表示にする。
 
 ## セットアップ・コマンド
 
@@ -100,6 +103,8 @@ npm start
 | `analyzeMenu` | `POST /menus/analyze` | アカウント用（必須） |
 | `getMenu` | `GET /menus/{menu_id}` | 解析用 |
 | `createConfirmation` | `POST /menus/{menu_id}/confirmations` | 解析用 |
+| `nearbyPlaces` | `GET /places/nearby`（半径500m・`locale=en`。⑥・⑧共通の `nearbySearchRadiusM`） | なし |
+| `publicMenus` | `GET /places/{google_place_id}/public-menus`（選択アレルゲン・`locale=en`） | なし |
 | `getDishDetails` | 将来用の予約欄（APIの契約・パスは未定義） | — |
 
 ブラウザからFastAPIを直接呼ぶため、**FastAPI側の `ALLOWED_ORIGINS` にフロントのオリジンを追加する必要がある**（2026-10-18時点の本番は `http://localhost:8081` のみ許可）。APIのレート制限はIP単位のため、Expoサーバーを経由する中継にはしない。
@@ -111,7 +116,8 @@ npm start
 | 名前 | 現在の扱い |
 |---|---|
 | `EXPO_PUBLIC_API_BASE_URL` | 任意。`/api/v1` を含むFastAPIのURL。未設定なら本番APIを使う |
-| `EXPO_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` | `.env.example` に予約。地図が未実装のため未使用。利用開始時はMaps JavaScript APIとHTTPリファラーを制限する |
+| `EXPO_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` | ⑥の地図に使うブラウザ用キー（公開される）。未設定なら地図を出さず一覧で代替。API側のPlaces用サーバーキーとは別にし、HTTPリファラーとMaps JavaScript APIに制限する |
+| `EXPO_PUBLIC_GOOGLE_MAPS_MAP_ID` | 任意。Advanced Markers用のMap ID。未設定ならGoogleの試験用 `DEMO_MAP_ID` を使う（本番前に自前のMap IDを設定） |
 
 `EXPO_PUBLIC_` の値はブラウザへ公開される。Supabaseの秘密鍵・GeminiのAPIキー等はFastAPI側で管理し、ここには設定しない。
 
@@ -186,6 +192,43 @@ AIの推定と店員の回答は区別する。「安全」「食べられる」
 - スマートフォンでの撮影、カメラ権限拒否時の画像選択、写真確認・再撮影。
 - 実APIによる登録・ログイン・本人設定保存・解析・結果再取得（本番兼用DBに書き込むため、試験はローカルのAPI・Supabaseを `EXPO_PUBLIC_API_BASE_URL` で指定して行う）。タイムアウト・期限切れ・失敗時に自動再送しないこと。
 - 店員回答の一括保存、同意・公開条件、明示的な「わからない」、再送（同じ `request_id` で200・`replayed=true`）、保存後の⑪′・⑮への反映。
-- 店舗検索・位置情報・地図、過去回答の件数／日時表示、本人履歴などの未実装範囲。
+- 店舗検索・位置情報・地図のGoogle実接続／実機確認、および本人履歴などの未実装範囲。
 
 食事制限・ゲスト利用・複数人プロファイルを含む全体要件の達成状況は、現行モバイル方針との差分を整理したうえで判断する。
+
+## Scan前の店舗選択（2026-10-18追加）
+
+Scanは⑧ `/places/select` へ進む。ブラウザで現在地を取得し、既存FastAPIの `GET /places/nearby` を半径500m（2026-10-18に300mから変更）・`locale=en` で呼び、距離順の候補から明示的に選択・Confirmする。Skipは位置情報待ちやAPI失敗時も利用でき、以前のPlace IDを消す。撮影→プレビュー→Analyzeには選択したPlace IDを引き継ぎ、Retakeでも維持する。撮影画面から店舗を選び直せる。
+
+店舗検索にブラウザ用Googleキーは不要。API側のPlaces設定とCORS、ブラウザの位置情報許可が必要で、実環境はHTTPSを使用する。位置情報と候補は永続保存せず、画像解析へはPlace IDだけを渡す。公開メニューの有無を問わず候補を選べる。
+
+実装・検証記録：[07：Scan前の店舗選択・スキップ](task/07_pre_scan_restaurant_selection.md)。⑥の地図連携に合わせ、店名はURLクエリ（`restaurant_name`）ではなくタブ内メモリで引き継ぐよう変更した（URLはPlace IDのみ）。
+
+追加機能の検証：`npm run typecheck`・`npm run build:web` 成功。`scripts/verify-place-selection.cjs` によるChromiumの13シナリオが成功（店舗選択、Skip後のPlace ID省略、Retake、位置情報拒否・待機中離脱、API障害、未ログインなど）。外部API・位置情報はモック。本番への書き込みは行わず、Google実接続・スマートフォン実機・DB保存を含む一巡は未検証。
+
+## ⑥地図・⑦公開メニュー（2026-10-18追加、P1）
+
+現在地を取得してGoogle Mapsに周辺店舗のピンを表示し、ピンを押すとモーダルシートでAPIが集約した公開料理・AI候補・公開店員回答を表で表示する。タスクと検証記録は [task/README.md](task/README.md)。
+
+- 周辺検索は画面表示時と再読み込みボタン（現在地を取り直して1回検索）だけ。地図の移動・ズーム・現在地へ戻るでは検索しない。最大20件で、範囲内の全店舗を網羅しない。
+- 公開メニューは開いた店舗だけ取得し、先読みしない。同じ店舗・料理名キーの複数投稿はAPI側で1料理にまとめられ、フロントでは再集計しない。最新のリクエストだけを採用し、閉じる・別店舗に切り替えると古い取得を破棄する。429は30秒再試行を止め、自動再送しない。
+- AIの推定と公開店員回答は別の列。`store_history=null` は `No public staff answers for this item.`、`score` は「履歴の集計指標」として表示し、確率・安全の表現にしない。`ai.weight=null` は表示しない。
+- 撮影ボタンは⑧へ候補を渡すだけで、Confirmまで撮影先にしない。座標・店名・帰属表示をURL・ストレージに保存しない。位置情報を拒否した後は利用者の操作まで再要求しない。
+
+### Google Mapsの設定（利用者の作業）
+
+1. Google Cloudで **Maps JavaScript API** を有効にし、課金・割当を確認する。
+2. ブラウザ用APIキーを新規作成し、アプリケーションの制限を「HTTPリファラー」にして開発・公開オリジン（例 `http://localhost:8081/*`、`https://<フロント>.vercel.app/*`）を登録、APIの制限を Maps JavaScript API のみにする。API側のPlaces用サーバーキーを流用しない。
+3. （推奨）Map Managementで Map ID（JavaScript・Vector）を作成する。
+4. `apps/mobile/.env` とVercelの環境変数に `EXPO_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`（と `EXPO_PUBLIC_GOOGLE_MAPS_MAP_ID`）を設定し、再ビルドする。値は文書・Gitに残さない。
+5. フロントのオリジンをAPIの `ALLOWED_ORIGINS` に追加する（周辺検索・公開メニューの取得に必要）。位置情報はHTTPSまたはlocalhostでのみ使える。
+
+### 検証（2026-10-18）
+
+- `npm run typecheck`・`npm run build:web` 成功（依存の追加なし）。
+- `scripts/verify-map.cjs`（偽のGoogle SDK・FastAPIモック、Chromium 390×844）：ダミーキーでビルドして15シナリオ、キーなしビルドで1シナリオが成功。ピンの区別と1店舗1ピン、表の列・null・不明・矛盾・器具共有・21料理以上、A→B連続選択と読み込み中に閉じた後の遅い応答、キーボード操作とフォーカス復帰、空状態から⑧へのConfirm、明示再検索だけの検索とピン・リスナーの重複なし、位置情報拒否後の再要求なし、SDK読込失敗の再試行・認証エラー、公開APIの429・503・不正応答、アレルゲン未選択、未ログイン時に位置情報・SDK・APIを呼ばないこと。
+- `scripts/verify-place-selection.cjs`：13シナリオ成功（引継ぎシナリオは、URLの店名を表示しない新しい仕様に合わせて更新）。
+- 実行方法：`EXPO_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY=test-browser-key npm run build:web` → `./node_modules/.bin/expo serve --port 8094` → `MAP_BUILD=test-key node scripts/verify-map.cjs`。キーなしでビルドした場合は `MAP_BUILD=keyless`。
+- API側：ローカルSupabaseで公開集約の結合テストを追加・成功（[task/05](task/05_api_aggregation.md)）。
+- 実キーでの確認（2026-10-18、利用者がキー・Map IDを設定後）：ローカルの開発サーバー（`http://localhost:8081`）をデスクトップのChromium（390×844、位置情報は東京駅に設定）で開き、本番APIへは書き込みのないGETだけを送信。Google Mapsのタイル・帰属表示（Map data・Terms）・ズーム、20店舗のピン＋現在地が表示され、Google側の認証・リファラー・Map IDのエラーはなし。実際のマーカーをキーボードで選択してシートが開き、`public-menus` が200（公開料理0件のため `No shared menus yet.`）。この確認で、現在地の点が真下の店舗ピンへのタップを奪う不具合を見つけて修正（Googleがマーカーのinline styleを書き換えるため、`!important` のスタイルシート規則で `pointer-events: none`）。
+- 未検証：HTTPSのスマートフォン実機（Safari／Chrome）、読み上げソフトでの確認、公開環境でのCORS、画面から解析→店員確認→公開→地図反映までのローカル一巡。
