@@ -6,7 +6,7 @@ type NavigationTab = "map" | "scan" | "profile";
 
 const tabs = [
   { id: "map", label: "Map", href: "/map" },
-  { id: "scan", label: "Scan", href: "/capture" },
+  { id: "scan", label: "Scan", href: "/places/select" },
   { id: "profile", label: "Profile", href: "/profiles" },
 ] as const;
 
@@ -14,6 +14,7 @@ export function getNavigationTab(pathname: string): NavigationTab | null {
   switch (pathname) {
     case "/map": return "map";
     case "/capture":
+    case "/places/select":
     case "/menu": return "scan";
     case "/profiles":
     case "/profiles/edit": return "profile";

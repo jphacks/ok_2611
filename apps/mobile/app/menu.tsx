@@ -144,7 +144,10 @@ export default function MenuScreen() {
           <Text style={styles.title}>Analysis complete</Text>
           <Text style={styles.subtitle}>{demoMode ? "Okinawa menu · Wheat + Pork" : "Menu analysis"}</Text>
         </View>
-        <Pressable accessibilityRole="button" style={styles.retake} onPress={() => router.push("/capture")}>
+        <Pressable accessibilityRole="button" style={styles.retake} onPress={() => {
+          const placeId = !demoMode && id ? getMenuAnalysis(id)?.google_place_id : null;
+          router.push({ pathname: "/capture", params: { google_place_id: placeId ?? "" } });
+        }}>
           <Text style={styles.retakeText}>↻ Retake</Text>
         </Pressable>
       </View>

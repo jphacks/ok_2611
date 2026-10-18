@@ -3,7 +3,9 @@
 const defaultApiBaseUrl = "https://meelyze-api.vercel.app/api/v1";
 export const apiBaseUrl = (process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || defaultApiBaseUrl).replace(/\/+$/, "");
 
-export const apiEndpoints: Record<"register" | "login" | "me" | "myAllergens" | "saveAllergens" | "analyzeMenu" | "getMenu" | "getDishDetails" | "createConfirmation", string> = {
+export const apiEndpoints: Record<"register" | "login" | "me" | "myAllergens" | "saveAllergens" | "analyzeMenu" | "getMenu" | "getDishDetails" | "createConfirmation" | "nearbyPlaces" | "publicMenus", string> = {
+  nearbyPlaces: `${apiBaseUrl}/places/nearby`, // GET
+  publicMenus: `${apiBaseUrl}/places`, // GET /places/{google_place_id}/public-menus; the client appends the rest
   register: `${apiBaseUrl}/auth/register`, // POST
   login: `${apiBaseUrl}/auth/login`, // POST
   me: `${apiBaseUrl}/me`, // GET

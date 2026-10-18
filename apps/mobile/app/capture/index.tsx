@@ -5,12 +5,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { useCapture } from "../../src/features/capture/CaptureContext";
 import { prepareMenuImage } from "../../src/features/capture/image";
+import { rememberedPlaceName } from "../../src/features/places/placeMemory";
 import { colors } from "../../src/theme";
 
 export default function CaptureScreen() {
-  const { google_place_id: placeId, restaurant_name: restaurantName } = useLocalSearchParams<{
-    google_place_id?: string; restaurant_name?: string;
-  }>();
+  const { google_place_id: placeId } = useLocalSearchParams<{ google_place_id?: string }>();
   const { setImage } = useCapture();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -36,7 +35,7 @@ export default function CaptureScreen() {
     try {
       const prepared = await prepareMenuImage(file);
       setImage(prepared);
-      router.push({ pathname: "/capture/preview", params: placeId ? { google_place_id: placeId, restaurant_name: restaurantName } : {} });
+      router.push({ pathname: "/capture/preview", params: { google_place_id: placeId || "" } });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not prepare this photo.");
     } finally {
@@ -53,7 +52,7 @@ export default function CaptureScreen() {
       const blob = await fetch(photo.uri).then((response) => response.blob());
       const prepared = await prepareMenuImage(new File([blob], "camera.jpg", { type: "image/jpeg" }));
       setImage(prepared);
-      router.push({ pathname: "/capture/preview", params: placeId ? { google_place_id: placeId, restaurant_name: restaurantName } : {} });
+      router.push({ pathname: "/capture/preview", params: { google_place_id: placeId || "" } });
     } catch {
       setError("Could not take the photo. Try again or choose a photo.");
     } finally {
@@ -64,7 +63,10 @@ export default function CaptureScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.darkArea}>
-        {restaurantName ? <Text style={styles.restaurant}>{restaurantName}</Text> : null}
+        {placeId ? <Text style={styles.restaurant}>{rememberedPlaceName(placeId)}</Text> : null}
+        <Pressable accessibilityRole="button" onPress={() => router.push("/places/select")} style={styles.changeRestaurant}>
+          <Text style={styles.changeRestaurantText}>{placeId ? "Change restaurant" : "Choose a restaurant"}</Text>
+        </Pressable>
         <View style={styles.cameraFrame}>
           {focused && permission?.granted ? (
             <CameraView
@@ -116,6 +118,8 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1 },
   darkArea: { flex: 1, minHeight: 440, backgroundColor: "#101A16", alignItems: "center", paddingHorizontal: 18, paddingTop: 32, paddingBottom: 16 },
   restaurant: { color: colors.white, textAlign: "center", fontSize: 13, backgroundColor: "#2D3934", paddingVertical: 9, paddingHorizontal: 20, borderRadius: 22, overflow: "hidden", marginBottom: 24 },
+  changeRestaurant: { padding: 10, marginBottom: 12 },
+  changeRestaurantText: { color: colors.white, fontSize: 13, textDecorationLine: "underline" },
   cameraFrame: { flex: 1, width: "100%", minHeight: 240, maxHeight: 590, overflow: "hidden", borderRadius: 18, borderWidth: 3, borderColor: colors.green, backgroundColor: "#13231D", justifyContent: "center" },
   camera: { width: "100%", height: "100%" },
   cameraFallback: { padding: 24, gap: 16 },

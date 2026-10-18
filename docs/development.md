@@ -12,7 +12,7 @@
 | [DB仕様](database.md) | 11テーブル、マスタ、RPC4つ、公開ビュー3つ、Storageと権限 |
 | 本書 | 構成、準備、開発ルール、検証、未決事項 |
 
-DB（`supabase/`）は5つのマイグレーションを2026-10-17にSupabaseプロジェクト `Meelyze-plus`（本番兼用）へ適用し、検証結果を [Supabase README](../supabase/README.md) に記録した。API（`apps/api`）は全17操作を実装し、ローカルのSupabaseと実キーのGemini・Placesで検証した（Vercelへのデプロイは未実施。[API README](../apps/api/README.md)）。フロント（`apps/mobile`）は未作成。`contracts/openapi.yaml` は2026-10-17に実装と照合済み。旧設計の検証結果は現行仕様の検証済み根拠には使わない。
+DB（`supabase/`）は5つのマイグレーションを2026-10-17にSupabaseプロジェクト `Meelyze-plus`（本番兼用）へ適用し、検証結果を [Supabase README](../supabase/README.md) に記録した。API（`apps/api`）は全17操作を実装し、ローカルのSupabaseと実キーのGemini・Placesで検証した（Vercelへのデプロイは未実施。[API README](../apps/api/README.md)）。フロント（`apps/mobile`）はExpo Webで実装中で、実装状況・ビルド構成は [モバイルREADME](../apps/mobile/README.md) を正とする。`contracts/openapi.yaml` は2026-10-17に実装と照合済み。旧設計の検証結果は現行仕様の検証済み根拠には使わない。
 
 ## 構成と準備
 
@@ -77,7 +77,7 @@ AIの根拠別の重み（`(c+1)/(n+2)`）は検証データがないため常�
 
 ## デプロイと運用
 
-- フロントのRoot Directoryは `apps/mobile`、Expoは `web.output: "single"`。画面仕様の各ルートへ直接アクセスできるSPAリライトを用意する。
+- フロントのRoot Directoryは `apps/mobile`、Expoは `web.output: "static"` とAPI Routes（`expo-server` 経由）。各ルートへの直接アクセスとVercel設定は [モバイルREADME](../apps/mobile/README.md) を参照する。
 - APIのRoot Directoryは `apps/api`、エントリポイントは `app/main.py` の `app`。`apps/api/contracts/`・`apps/api/prompts/` がデプロイに含まれることを確認する（`vercel.json` の `excludeFiles` で除外していないことはテスト済み）。
 - フロントURLを `ALLOWED_ORIGINS`、APIの `/api/v1` を含むURLを `EXPO_PUBLIC_API_BASE_URL` に設定する。本番・スマートフォンでの確認はHTTPSを使う。
 - `/api/v1/health` と `/places/select`・`/capture/preview` の直接アクセスを確認する。画面状態がない場合は店舗選択・撮影へ案内し、デプロイ保護で停止しないことを確かめる。
