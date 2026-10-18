@@ -23,9 +23,11 @@ from app.config import Settings
 from app.main import create_app
 from app.routers import menus as menus_router
 from app.services import menus as menu_store
+from app.services.dish_descriptions import get_dish_describer
 from app.services.menu_analysis import get_menu_analyzer
 from app.services.places import PlacesClient, get_optional_places_client
 from app.services.rate_limit import MemoryRateLimiter, get_rate_limiter
+from tests.conftest import KeepAnalysisDescriptions
 
 pytestmark = pytest.mark.local_db
 
@@ -126,6 +128,7 @@ def client(db, analyzer, monkeypatch):
         "k", transport=httpx.MockTransport(google)
     )
     app.dependency_overrides[get_menu_analyzer] = lambda: analyzer
+    app.dependency_overrides[get_dish_describer] = KeepAnalysisDescriptions
     app.dependency_overrides[get_rate_limiter] = MemoryRateLimiter
     return TestClient(app)
 

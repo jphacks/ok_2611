@@ -11,6 +11,13 @@ from app.services.supabase_client import get_supabase_client
 
 FRONT_ORIGIN = "http://localhost:8081"
 
+
+class KeepAnalysisDescriptions:
+    """料理ごとの説明の生成（Gemini）の代わり。全料理を生成できなかった扱いにし、解析時の説明を残す。"""
+
+    def describe(self, dishes, timeout_seconds):
+        return [None] * len(dishes)
+
 # supabase/migrations/20261016000100_seed_master_data.sql と同じ値
 ALLERGEN_ROWS = [
     {"id": i, "code": c, "name": n, "name_en": e, "category": cat, "display_order": o}

@@ -21,7 +21,7 @@ DB（`supabase/`）は5つのマイグレーションを2026-10-17にSupabaseプ
 | `apps/mobile`：React Native・Expo Web | 利用者の画面と店員確認カード。TypeScript、Expo Router | [フロントREADME](../apps/mobile/README.md) |
 | `apps/api`：FastAPI | 認証、Gemini解析、Places検索、DB操作、判定 | [API README](../apps/api/README.md) |
 | Supabase PostgreSQL・Storage | データと非公開画像。ブラウザから直接アクセスさせない | [DBセットアップ](../supabase/README.md) |
-| Gemini | 構造化した料理・原材料候補・根拠・英訳の生成 | APIから呼ぶ |
+| Gemini | 構造化した料理・原材料候補・根拠・英訳の生成、料理ごとの英語の説明の生成 | APIから呼ぶ |
 | Google Maps Platform | Places API（New）で店舗候補、Maps JavaScript APIで地図（P1） | サーバー用・ブラウザ用キーを分ける |
 | Vercel | WebとAPIを別プロジェクトで配置 | 下記「デプロイ」 |
 

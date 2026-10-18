@@ -41,9 +41,10 @@ Meelyze+ のAPIサーバー。FastAPIで `/api/v1` を提供し、Supabase（Pos
 | `app/dependencies.py` | `no_store`（`Cache-Control: no-store` を付ける依存）、`client_ip`、`authorized_menu`（解析用トークンでメニューへの権限・期限を確認。API 5・6） |
 | `app/routers/` | エンドポイント |
 | `app/schemas/` | Pydanticの入出力 |
-| `app/services/` | 作成済み：`supabase_client.py`、`db_errors.py`、`masters.py`、`rate_limit.py`、`places.py`（Google）、`publication.py`（公開ビューの照合）、`images.py`（画像の検証・無害化）、`menu_analysis.py`（Gemini・出力の検証）、`tokens.py`（解析用トークン）、`auth.py`（アカウント用トークンの検証。発行は06）、`menus.py`（メニューのDB・Storage操作）、`answers.py`（回答の値の対応）、`assessment.py`（判定）、`menu_results.py`（API 4・5の応答、マスタの読み込み）、`confirmations.py`（API 6の入力検証・公開判定・結果）、`target_ids.py`（判定の対象ID）、`public_menus.py`（API 7の公開集計）、`history.py`（API 16・17）。`auth.py` はアカウント用トークンの発行・検証と登録・ログイン |
+| `app/services/` | 作成済み：`supabase_client.py`、`db_errors.py`、`masters.py`、`rate_limit.py`、`places.py`（Google）、`publication.py`（公開ビューの照合）、`images.py`（画像の検証・無害化）、`menu_analysis.py`（Gemini・出力の検証）、`dish_descriptions.py`（料理ごとの説明の生成）、`tokens.py`（解析用トークン）、`auth.py`（アカウント用トークンの検証。発行は06）、`menus.py`（メニューのDB・Storage操作）、`answers.py`（回答の値の対応）、`assessment.py`（判定）、`menu_results.py`（API 4・5の応答、マスタの読み込み）、`confirmations.py`（API 6の入力検証・公開判定・結果）、`target_ids.py`（判定の対象ID）、`public_menus.py`（API 7の公開集計）、`history.py`（API 16・17）。`auth.py` はアカウント用トークンの発行・検証と登録・ログイン |
 | `prompts/menu_analysis.md` | VLMのプロンプトv5（既存v4データの読取も維持）。[11の検証記録](tests/fixtures/ai_unknown_evaluation.md) |
 | `contracts/menu_analysis.schema.json` | VLM出力の契約（JSON Schema） |
+| `prompts/dish_description.md`・`contracts/dish_description.schema.json` | 料理ごとの英語の説明のプロンプトd1と出力の契約 |
 | `tests/` | 解析用トークン、店員確認、公開条件、予測、アカウントのテスト |
 | `.env.example` | 環境変数の例（秘密値は空欄） |
 | `vercel.json`・`.vercelignore` | Vercelの関数設定（実行時間・同梱から除くファイル）とアップロードの除外 |
@@ -249,12 +250,13 @@ Supabaseクライアント経由のRPC・テーブル操作のエラーは、Pos
 
 ### API 4 `POST /menus/analyze`
 
-処理順：IP単位のレート制限（5回／分・50回／日。上限超過はGeminiを呼ばない）→ 任意のアカウント用Bearerの検証 → multipartの検証 → 対象IDの検証 → 画像の検証・無害化 → Place IDの確認（店舗指定時だけ） → Gemini → 出力の検証 → 店舗の登録 → Storage保存 → `save_menu_analysis` → 判定。
+処理順：IP単位のレート制限（5回／分・50回／日。上限超過はGeminiを呼ばない）→ 任意のアカウント用Bearerの検証 → multipartの検証 → 対象IDの検証 → 画像の検証・無害化 → Place IDの確認（店舗指定時だけ） → Gemini → 出力の検証 → 料理ごとの説明（Gemini） → 店舗の登録 → Storage保存 → `save_menu_analysis` → 判定。
 
 - multipart：フィールドは `image`（ファイル1つ）・`google_place_id`・`allergen_ids`・`dietary_restriction_ids`・`locale` だけ。他のフィールド（`account_id`・`user_publish_consent` を含む）、ファイルでない `image`、ファイルの文字フィールド、重複した `locale`・`google_place_id` は422 `validation_error`。対象IDは同名partの繰り返しで、カンマ区切り・JSON配列の文字列は422 `validation_error`、未知・重複のIDは422 `invalid_allergen_ids`／`invalid_dietary_restriction_ids`。
 - 本文は2 MiB＋64 KiBまで読み、超えたら413 `image_too_large`。画像は申告のMIME（JPEG／PNG）・先頭のシグネチャ・Pillowの判定が一致しなければ415、2 MiB超過・2000万画素超過は413 `image_too_large`（画素数超過のステータスはAPI仕様に定めがないため413とし、メッセージで区別）。EXIFの向きを反映して再エンコードし、EXIF・ICC・テキストを除く（JPEGは画質90、2 MiBを超えたら段階的に下げる）。
 - アカウント用Bearer：HS256の署名・`exp`・`iat`・`typ="account"`・`sub`（UUID）・アカウントの存在を検証。期限切れは401 `account_token_expired`、それ以外は401 `unauthorized`。解析用トークンを送っても401で、ゲストに降格しない。ヘッダーなしはゲスト（所有者なし・利用者同意false）。
 - Gemini：`gemini-3.8-flash`、`temperature=0`、思考レベル `LOW`、構造化出力。画像と全マスタ（29＋4）だけを送り、利用者の選択設定は送らない。SDKの再試行は使わず、45秒で504 `timeout`。Geminiの4xx・5xx・接続失敗は503。ログにはステータス・例外の型名だけを残す。
+- 料理ごとの説明：解析の出力を検証した後、料理ごとに1回ずつGeminiを呼ぶ（同じモデル・`temperature=0`・思考レベル `LOW`・最大10並列、再送しない）。送るのは料理名の原文・英訳・記載された原材料と同じメニューの他の料理名だけ。1料理15秒、解析の開始から38秒まで。失敗・時間切れ・不正な出力の料理は解析時の説明を残し、解析は失敗させない。ログは件数と理由だけ。2026-10-18に実キーで、似た料理が並ぶラーメン店の合成メニュー（8品）の説明が料理ごとに異なることを確認（説明の生成は約2.3秒）。
 - Geminiは配列の件数制約（料理の `maxItems: 20` など）を含むスキーマを400で拒否したため、Geminiへは `minItems`・`maxItems` を除いたスキーマを渡し、APIは件数を含む契約のスキーマで検証する。
 - 出力の検証：まずJSON Schemaで形・型・列挙値を検証する。未知のマスタID、無効な価格・通貨・名前、20料理超過などは502 `invalid_ai_output`、0料理は422 `unreadable_menu`。許可値内のstatus/source矛盾と不明以外の空の根拠だけを、対象候補の `unknown`／`unavailable`／空の根拠へ復旧する。正しい不明も根拠を空に統一し、最終的な組み合わせ・根拠を再検証する。重複は正規化後に優先順（`menu_text`→`recipe_inference`→`dish_name_inference`→`unavailable`）で1つにし、同順位は先頭。有効な料理なら全候補不明でも201。ログは原因コードと復旧件数だけ。API 5・6・7・17も正規化した保存結果を使い、AIの不明で店員回答や履歴件数を作らない。新規解析はv5、既存v4の読取も維持する。
 - 保存：店舗は `restaurants` をPlace IDで取得し、なければ追加（同時追加の `23505` は再取得）。画像は非公開バケットに `menus/<UUID>.<jpg|png>` で保存し、`save_menu_analysis` を1回呼ぶ。RPCが失敗したら（DBエラー・接続失敗とも）Storage APIで画像を削除してから元のエラーを返す。Storageへの保存の失敗は503。

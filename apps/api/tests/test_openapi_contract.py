@@ -24,6 +24,7 @@ from tests.test_menus_api import (  # noqa: E402, F401（フィクスチャ）
     analyzer,
     app,
     clock,
+    describer,
     google,
     settings,
     store,

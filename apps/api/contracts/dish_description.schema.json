@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meelyze+ dish description output (prompt d1)",
+  "description": "料理ごとの英語の説明を生成するGemini出力の契約。1回の呼び出しで1料理だけを扱う。未定義フィールドは拒否する。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["description"],
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "この料理だけのAIによる英語の短い説明（1〜2文）。安全性・適合性を断定しない。",
+      "minLength": 1,
+      "maxLength": 500
+    }
+  }
+}

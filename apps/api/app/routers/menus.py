@@ -1,11 +1,13 @@
 """API 4 `POST /menus/analyze`・API 5 `GET /menus/{menu_id}`。
 
 解析：レート制限 → 任意のアカウント認証 → multipartの検証 → 対象IDの検証 → 画像の検証・無害化 →
-Place IDの確認 → Gemini → 出力の検証 → 店舗の登録 → Storage保存 → `save_menu_analysis` → 判定。
+Place IDの確認 → Gemini → 出力の検証 → 料理ごとの説明（Gemini） → 店舗の登録 → Storage保存 →
+`save_menu_analysis` → 判定。
 利用者の選択設定（`allergen_ids`・`dietary_restriction_ids`）は判定の対象選択にだけ使い、Gemini・DB・ログへ渡さない。
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -22,6 +24,7 @@ from app.schemas.common import VALIDATION_ERROR_RESPONSES, ErrorResponse
 from app.schemas.menus import AnalyzeResponse, MenuQuery, MenuResponse
 from app.services import menus as menu_store
 from app.services.auth import verify_account_token
+from app.services.dish_descriptions import DishDescriber, apply_descriptions, description_timeout, get_dish_describer
 from app.services.images import MAX_IMAGE_BYTES, SanitizedImage, sanitize_image
 from app.services.menu_analysis import (
     PROMPT_VERSION,
@@ -220,7 +223,9 @@ def _analyze(
     db: Client,
     places_client: PlacesClient | None,
     analyzer: MenuAnalyzer,
+    describer: DishDescriber,
 ) -> AnalyzeResponse:
+    started = time.monotonic()
     account_id = verify_account_token(account_token, settings, db) if account_token is not None else None
 
     allergen_items, dietary_items, allergen_names, dietary_names = load_masters(db)
@@ -236,6 +241,8 @@ def _analyze(
     # 選択設定は渡さない。マスタ全件と画像だけ
     raw = analyzer.analyze(image, allergen_items, dietary_items)
     dishes = parse_analysis(raw, set(allergen_names), set(dietary_names))
+    # 説明は料理ごとに生成し直す。生成できなかった料理は解析時の説明を残す
+    dishes = apply_descriptions(dishes, describer.describe(dishes, description_timeout(time.monotonic() - started)))
 
     restaurant_id = (
         menu_store.get_or_create_restaurant(db, form.google_place_id) if form.google_place_id is not None else None
@@ -294,12 +301,15 @@ async def analyze_menu(
     db: Annotated[Client, Depends(get_supabase_client)],
     places_client: Annotated[PlacesClient | None, Depends(get_optional_places_client)],
     analyzer: Annotated[MenuAnalyzer, Depends(get_menu_analyzer)],
+    describer: Annotated[DishDescriber, Depends(get_dish_describer)],
 ) -> AnalyzeResponse:
     for rule in ANALYZE_RATE_LIMITS:
         await run_in_threadpool(enforce_rate_limit, limiter, rule, ip)
     account_token = bearer_token(request)
     form = await parse_analyze_form(request)
-    return await run_in_threadpool(_analyze, form, account_token, settings, db, places_client, analyzer)
+    return await run_in_threadpool(
+        _analyze, form, account_token, settings, db, places_client, analyzer, describer
+    )
 
 
 @router.get(

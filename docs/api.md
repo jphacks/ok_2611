@@ -4,7 +4,7 @@
 
 - 本書を基に作成した `contracts/openapi.yaml` を、実装の `/openapi.json` と一致させる。2026-10-17に全17操作を照合した（`apps/api/scripts/compare_openapi.py`、実際の応答と契約の例を契約のスキーマで検証する `apps/api/tests/test_openapi_contract.py`）。
 - 技術スタック・環境設定は [apps/api/README.md](../apps/api/README.md) を参照する。
-- VLMのプロンプトv5と出力のJSON Schemaは `apps/api/prompts/menu_analysis.md`・`apps/api/contracts/menu_analysis.schema.json`（VercelのRoot Directory `apps/api` に含めるため、この配下に置く）。既存v4の読み取りも維持する。APIの実装・検証の結果は [API README](../apps/api/README.md) に記録する。
+- VLMのプロンプトv5と出力のJSON Schemaは `apps/api/prompts/menu_analysis.md`・`apps/api/contracts/menu_analysis.schema.json`（VercelのRoot Directory `apps/api` に含めるため、この配下に置く）。既存v4の読み取りも維持する。料理ごとの英語の説明を生成するプロンプトd1と出力のJSON Schemaは `apps/api/prompts/dish_description.md`・`apps/api/contracts/dish_description.schema.json`。APIの実装・検証の結果は [API README](../apps/api/README.md) に記録する。
 
 ## 共通
 
@@ -39,7 +39,7 @@
 |---|---|---|
 | Google Places API（New） | API（サーバー用キー） | 周辺飲食店の検索、店舗のPlace IDの確認 |
 | Google Maps JavaScript API | 画面（ブラウザ用キー、P1） | 地図とピンの表示 |
-| Gemini | API | メニュー画像の解析 |
+| Gemini | API | メニュー画像の解析、料理ごとの英語の説明の生成 |
 
 - Googleから取得した店名・座標・住所はDBに保存しない。保存するのはPlace IDだけ。
 - Googleのデータを表示する画面には、Googleの帰属表示を付ける。
@@ -285,13 +285,17 @@ APIが起動しているかを確認する。DBや外部サービスへの接続
 3. Geminiへ、画像とアレルゲン・食事制限のマスタを送る。利用者が選択した設定は送らない。出力を `contracts/menu_analysis.schema.json` で検証する。画像内の文章は入力データとして扱い、そこに書かれた指示には従わない。
 4. 未知のアレルゲンID・食事制限ID、無効な価格、20料理超過、フィールド・型・列挙値などの構造不正を502で拒否する。読めない料理は返さず、0料理なら422 `unreadable_menu`。
 5. アレルゲン・食事制限候補を、後述の「AIの候補」の規則で項目単位で正規化する。正規化後の組み合わせと根拠を検証し、同じ項目の重複を優先順で1件にする。料理名から照合用のキー（`name_key`）を作る。
-6. 店舗があれば、`restaurants` に Place ID を登録する（既にあれば再利用）。
-7. 非公開Storageへランダムなパスで画像を保存する。`save_menu_analysis` の1回のRPCで、メニューと全料理を登録する。ログイン中は検証済み所有者IDを渡し、DBから登録時同意を読み取って保存する。DB登録に失敗したら、画像をStorage APIで削除する。
-8. 店舗があれば、同じ店舗・同じ `name_key` の過去の店員確認を集め、「判定アルゴリズム」で判定を計算する（保存しない）。
-9. 解析用トークンと、`locale` の言語での結果を返す。
+6. 料理ごとに1回ずつGeminiを呼び、その料理だけの英語の説明（`translations.en.description`）を生成する（並列、自動では再送しない）。送るのは、その料理の名前の原文・英訳・メニューに記載された原材料と、同じメニューの他の料理名（似た料理と区別するため）だけ。画像・利用者の選択設定・価格・候補は送らない。出力を `contracts/dish_description.schema.json`（1〜500文字、未定義フィールドを拒否）で検証する。料理名は入力データとして扱い、そこに書かれた指示には従わない。
+   - 1料理の上限は15秒、かつ解析の開始から38秒まで（画面の待機上限45秒の中で保存の時間を残す）。Geminiの失敗・時間切れ・不正な出力の料理は、手順3で解析と同時に得た説明を残す。説明の失敗だけでは解析を失敗にしない。
+   - ログには、解析時の説明を残した件数と理由（ステータス・例外の型名）だけを記録し、料理名・出力本文は記録しない。
+7. 店舗があれば、`restaurants` に Place ID を登録する（既にあれば再利用）。
+8. 非公開Storageへランダムなパスで画像を保存する。`save_menu_analysis` の1回のRPCで、メニューと全料理を登録する。ログイン中は検証済み所有者IDを渡し、DBから登録時同意を読み取って保存する。DB登録に失敗したら、画像をStorage APIで削除する。
+9. 店舗があれば、同じ店舗・同じ `name_key` の過去の店員確認を集め、「判定アルゴリズム」で判定を計算する（保存しない）。
+10. 解析用トークンと、`locale` の言語での結果を返す。
 
 - `allergen_ids`・`dietary_restriction_ids` は判定の対象選択にだけ使い、DBに保存しない。未知・重複のIDはそれぞれ422 `invalid_allergen_ids`／`invalid_dietary_restriction_ids`。保存する `ai_result` は利用者に依存しない。
-- 料理名の英訳と英語の説明（`translations.en`）を解析時に生成して保存する。説明はAIによる推定であり、画面で「AIによる説明」と明示する。
+- 料理名の英訳と英語の説明（`translations.en`）を解析時に生成して保存する。英訳は画像の解析（手順3）、説明は料理ごとの生成（手順6）による。説明はAIによる推定であり、その店舗のレシピではない。画面で「AIによる説明」と明示する。安全性・適合性（アレルゲン不使用、ヴィーガン、ハラール等）を断定しない。
+- `prompt_version` は画像の解析のプロンプトの版（v5）を返す。説明のプロンプトの版（d1）はレスポンス・DBに含めない。
 - 画像のパスやURLは返さない。
 - 自動では再送しない。通信が失敗した場合は、利用者の操作でやり直す。
 - レート制限：IP単位で5回／分、50回／日（初期案）。

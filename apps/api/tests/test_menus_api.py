@@ -21,6 +21,7 @@ from app.config import Settings
 from app.errors import ApiError
 from app.main import create_app
 from app.services import menus as menu_store
+from app.services.dish_descriptions import get_dish_describer
 from app.services.menu_analysis import get_menu_analyzer
 from app.services.menus import DishRow, MenuAnswer, MenuRow, SavedConfirmation, StoreAnswerRow
 from app.services.places import PlacesClient, get_optional_places_client
@@ -179,9 +180,26 @@ def settings() -> Settings:
     return Settings(_env_file=None, allowed_origins=FRONT_ORIGIN, auth_jwt_secret=SECRET)
 
 
+class FakeDescriber:
+    """料理ごとの説明の生成。既定は全料理を生成できなかった扱い（解析時の説明を残す）。"""
+
+    def __init__(self) -> None:
+        self.generated: dict[str, str | None] = {}
+        self.calls: list[tuple[list, float]] = []
+
+    def describe(self, dishes, timeout_seconds):
+        self.calls.append((dishes, timeout_seconds))
+        return [self.generated.get(dish.name) for dish in dishes]
+
+
 @pytest.fixture
 def analyzer() -> FakeAnalyzer:
     return FakeAnalyzer()
+
+
+@pytest.fixture
+def describer() -> FakeDescriber:
+    return FakeDescriber()
 
 
 @pytest.fixture
@@ -202,12 +220,13 @@ def clock():
 
 
 @pytest.fixture
-def app(settings, fake_supabase, analyzer, store, google, clock):
+def app(settings, fake_supabase, analyzer, describer, store, google, clock):
     app = create_app(settings)
     limiter = MemoryRateLimiter(clock=lambda: clock["now"])
     places = PlacesClient("k", transport=httpx.MockTransport(google.handler))
     app.dependency_overrides[get_supabase_client] = lambda: fake_supabase
     app.dependency_overrides[get_menu_analyzer] = lambda: analyzer
+    app.dependency_overrides[get_dish_describer] = lambda: describer
     app.dependency_overrides[get_optional_places_client] = lambda: places
     app.dependency_overrides[get_rate_limiter] = lambda: limiter
     return app
@@ -321,6 +340,42 @@ def test_recorded_menu_returns_201_and_can_be_read_again(client, analyzer, store
     assert len(analyzer.calls) == 1
     saved = [d.ai_result() for d in store.saved[body["menu_id"]]["dishes"]]
     assert sum(c["status"] == "unknown" for d in saved for c in d["dietary_restrictions"]) == 4
+
+
+def test_descriptions_are_generated_per_dish_and_saved(client, analyzer, describer, store):
+    describer.generated = {
+        "海老天そば": "Hot buckwheat noodle soup topped with shrimp tempura.",
+        "かけそば": "Plain buckwheat noodles in hot broth without toppings.",
+    }
+    response = analyze(client)
+    assert response.status_code == 201, response.text
+    [(dishes, timeout_seconds)] = describer.calls
+    # 出力の検証後の料理を、メニュー上の順に1回で渡す（画像・選択設定は渡さない）
+    assert [dish.name for dish in dishes] == ["海老天そば", "かけそば"]
+    assert 0 < timeout_seconds <= 15
+    body = response.json()
+    assert [d["description"] for d in body["dishes"]] == list(describer.generated.values())
+    saved = store.saved[body["menu_id"]]["dishes"]
+    assert [d.rpc_payload()["translations"]["en"]["description"] for d in saved] == list(describer.generated.values())
+    # 英訳の料理名・候補は解析の結果のまま
+    assert [d.rpc_payload()["translations"]["en"]["name"] for d in saved] == ["海老天そば (en)", "かけそば (en)"]
+
+
+def test_dish_without_generated_description_keeps_analysis_description(client, describer):
+    describer.generated = {"かけそば": "Plain buckwheat noodles in hot broth without toppings."}
+    response = analyze(client)
+    assert response.status_code == 201, response.text
+    assert [d["description"] for d in response.json()["dishes"]] == [
+        "AI description", "Plain buckwheat noodles in hot broth without toppings.",
+    ]
+
+
+def test_descriptions_are_not_generated_when_analysis_fails(client, analyzer, describer, store):
+    analyzer.output = {"dishes": []}
+    assert analyze(client).status_code == 422
+    analyzer.output = {"dishes": "invalid"}
+    assert analyze(client).status_code == 502
+    assert describer.calls == [] and store.saved == {}
 
 
 @pytest.mark.parametrize("selected", [False, True])

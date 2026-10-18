@@ -20,9 +20,11 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from app.services import menus as menu_store
+from app.services.dish_descriptions import get_dish_describer
 from app.services.menu_analysis import get_menu_analyzer
 from app.services.places import PlacesClient, get_optional_places_client
 from app.services.rate_limit import MemoryRateLimiter, get_rate_limiter
+from tests.conftest import KeepAnalysisDescriptions
 from tests.integration.test_menus_local_db import (  # noqa: F401（フィクスチャ）
     DB_URL,
     KEY,
@@ -65,6 +67,7 @@ def client(db, analyzer, limiter, clock, monkeypatch):
         "k", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"id": r.url.path.rsplit("/", 1)[1]}))
     )
     app.dependency_overrides[get_menu_analyzer] = lambda: analyzer
+    app.dependency_overrides[get_dish_describer] = KeepAnalysisDescriptions
     app.dependency_overrides[get_rate_limiter] = lambda: limiter
     test_client = TestClient(app)
     test_client.clock = clock  # 解析のレート制限（5回／分）を越えないよう、解析ごとに時計を進める
