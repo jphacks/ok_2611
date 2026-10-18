@@ -1,0 +1,205 @@
+[
+  {
+    "order": 1,
+    "filename": "egg.svg",
+    "name_ja": "卵",
+    "name_en": "Egg",
+    "category": "required"
+  },
+  {
+    "order": 2,
+    "filename": "milk.svg",
+    "name_ja": "乳",
+    "name_en": "Milk",
+    "category": "required"
+  },
+  {
+    "order": 3,
+    "filename": "wheat.svg",
+    "name_ja": "小麦",
+    "name_en": "Wheat",
+    "category": "required"
+  },
+  {
+    "order": 4,
+    "filename": "buckwheat.svg",
+    "name_ja": "そば",
+    "name_en": "Buckwheat",
+    "category": "required"
+  },
+  {
+    "order": 5,
+    "filename": "peanut.svg",
+    "name_ja": "落花生（ピーナッツ）",
+    "name_en": "Peanut",
+    "category": "required"
+  },
+  {
+    "order": 6,
+    "filename": "shrimp.svg",
+    "name_ja": "えび",
+    "name_en": "Shrimp",
+    "category": "required"
+  },
+  {
+    "order": 7,
+    "filename": "crab.svg",
+    "name_ja": "かに",
+    "name_en": "Crab",
+    "category": "required"
+  },
+  {
+    "order": 8,
+    "filename": "walnut.svg",
+    "name_ja": "くるみ",
+    "name_en": "Walnut",
+    "category": "required"
+  },
+  {
+    "order": 9,
+    "filename": "cashew.svg",
+    "name_ja": "カシューナッツ",
+    "name_en": "Cashew",
+    "category": "required"
+  },
+  {
+    "order": 10,
+    "filename": "almond.svg",
+    "name_ja": "アーモンド",
+    "name_en": "Almond",
+    "category": "recommended"
+  },
+  {
+    "order": 11,
+    "filename": "abalone.svg",
+    "name_ja": "あわび",
+    "name_en": "Abalone",
+    "category": "recommended"
+  },
+  {
+    "order": 12,
+    "filename": "squid.svg",
+    "name_ja": "いか",
+    "name_en": "Squid",
+    "category": "recommended"
+  },
+  {
+    "order": 13,
+    "filename": "salmon-roe.svg",
+    "name_ja": "いくら",
+    "name_en": "Salmon roe",
+    "category": "recommended"
+  },
+  {
+    "order": 14,
+    "filename": "orange.svg",
+    "name_ja": "オレンジ",
+    "name_en": "Orange",
+    "category": "recommended"
+  },
+  {
+    "order": 15,
+    "filename": "kiwi-fruit.svg",
+    "name_ja": "キウイフルーツ",
+    "name_en": "Kiwi fruit",
+    "category": "recommended"
+  },
+  {
+    "order": 16,
+    "filename": "beef.svg",
+    "name_ja": "牛肉",
+    "name_en": "Beef",
+    "category": "recommended"
+  },
+  {
+    "order": 17,
+    "filename": "sesame.svg",
+    "name_ja": "ごま",
+    "name_en": "Sesame",
+    "category": "recommended"
+  },
+  {
+    "order": 18,
+    "filename": "salmon.svg",
+    "name_ja": "さけ",
+    "name_en": "Salmon",
+    "category": "recommended"
+  },
+  {
+    "order": 19,
+    "filename": "mackerel.svg",
+    "name_ja": "さば",
+    "name_en": "Mackerel",
+    "category": "recommended"
+  },
+  {
+    "order": 20,
+    "filename": "soy.svg",
+    "name_ja": "大豆",
+    "name_en": "Soy",
+    "category": "recommended"
+  },
+  {
+    "order": 21,
+    "filename": "chicken.svg",
+    "name_ja": "鶏肉",
+    "name_en": "Chicken",
+    "category": "recommended"
+  },
+  {
+    "order": 22,
+    "filename": "banana.svg",
+    "name_ja": "バナナ",
+    "name_en": "Banana",
+    "category": "recommended"
+  },
+  {
+    "order": 23,
+    "filename": "pork.svg",
+    "name_ja": "豚肉",
+    "name_en": "Pork",
+    "category": "recommended"
+  },
+  {
+    "order": 24,
+    "filename": "pistachio.svg",
+    "name_ja": "ピスタチオ",
+    "name_en": "Pistachio",
+    "category": "recommended"
+  },
+  {
+    "order": 25,
+    "filename": "macadamia-nut.svg",
+    "name_ja": "マカダミアナッツ",
+    "name_en": "Macadamia nut",
+    "category": "recommended"
+  },
+  {
+    "order": 26,
+    "filename": "peach.svg",
+    "name_ja": "もも",
+    "name_en": "Peach",
+    "category": "recommended"
+  },
+  {
+    "order": 27,
+    "filename": "yam.svg",
+    "name_ja": "やまいも",
+    "name_en": "Yam",
+    "category": "recommended"
+  },
+  {
+    "order": 28,
+    "filename": "apple.svg",
+    "name_ja": "りんご",
+    "name_en": "Apple",
+    "category": "recommended"
+  },
+  {
+    "order": 29,
+    "filename": "gelatin.svg",
+    "name_ja": "ゼラチン",
+    "name_en": "Gelatin",
+    "category": "recommended"
+  }
+]

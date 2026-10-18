@@ -1,7 +1,7 @@
 import type { MenuAllergen, MenuResult } from "../../api/menus";
 
 export type BadgeTone = "danger" | "caution" | "unknown" | "reportedAbsent";
-export type MenuBadge = { label: string; tone: BadgeTone };
+export type MenuBadge = { allergenId: number; name: string; label: string; tone: BadgeTone };
 export type SummaryDish = {
   dishId: string;
   name: string;
@@ -71,17 +71,18 @@ function latestDate(items: MenuAllergen[]): string | null {
   return dates.length ? dates.sort().at(-1) ?? null : null;
 }
 
-function aiBadge(item: MenuAllergen | undefined, fallbackName: string): MenuBadge {
+function aiBadge(item: MenuAllergen | undefined, fallbackName: string, allergenId: number): MenuBadge {
   const name = item?.display_name || fallbackName;
-  if (item?.ai.status === "explicit_present") return { label: `Listed on menu: ${name}`, tone: "danger" };
-  if (item?.ai.status === "possible") return { label: `May contain: ${name} (AI estimate)`, tone: "caution" };
-  return { label: `${name}: Unknown — ask staff`, tone: "unknown" };
+  if (item?.ai.status === "explicit_present") return { allergenId, name, label: `Listed on menu: ${name}`, tone: "danger" };
+  if (item?.ai.status === "possible") return { allergenId, name, label: `May contain: ${name} (AI estimate)`, tone: "caution" };
+  return { allergenId, name, label: `${name}: Unknown — ask staff`, tone: "unknown" };
 }
 
-function staffBadge(item: MenuAllergen | undefined, fallbackName: string): MenuBadge {
-  if (!item?.current_answer) return { label: `${item?.display_name || fallbackName}: Not answered`, tone: "unknown" };
+function staffBadge(item: MenuAllergen | undefined, fallbackName: string, allergenId: number): MenuBadge {
+  const name = item?.display_name || fallbackName;
+  if (!item?.current_answer) return { allergenId, name, label: `${name}: Not answered`, tone: "unknown" };
   const answer = answerLabels[item.current_answer.answer];
-  return { label: `${item.display_name}: ${answer.text}`, tone: answer.tone };
+  return { allergenId, name, label: `${name}: ${answer.text}`, tone: answer.tone };
 }
 
 export function buildMenuSummary(menu: MenuResult, selectedIds: number[], names: Record<number, string>): MenuSummary {
@@ -99,8 +100,8 @@ export function buildMenuSummary(menu: MenuResult, selectedIds: number[], names:
       price: dish.price,
       currency: dish.currency,
       badges: selected.map((item, index) => hasCurrentAnswer
-        ? staffBadge(item, names[selectedIds[index]] || `Allergen ${selectedIds[index]}`)
-        : aiBadge(item, names[selectedIds[index]] || `Allergen ${selectedIds[index]}`)),
+        ? staffBadge(item, names[selectedIds[index]] || `Allergen ${selectedIds[index]}`, selectedIds[index])
+        : aiBadge(item, names[selectedIds[index]] || `Allergen ${selectedIds[index]}`, selectedIds[index])),
       confirmedAt: hasCurrentAnswer ? latestDate(relevant) : null,
       needsRecheck: relevant.some((item) => item.notices.ai_staff_mismatch ||
         item.notices.recheck_current_answer || item.notices.history_conflict ||

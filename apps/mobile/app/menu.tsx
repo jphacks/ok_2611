@@ -9,13 +9,14 @@ import { applyLocalConfirmations } from "../src/features/menu-results/localConfi
 import { getSelectedAllergenIds } from "../src/features/profile/selection";
 import type { MenuSummary, SummaryDish, BadgeTone } from "../src/features/menu-results/summary";
 import { DishDetailSheet } from "../src/features/menu-results/DishDetailSheet";
+import { IngredientIcon } from "../src/components/IngredientIcon";
 import { colors } from "../src/theme";
 
-const tones: Record<BadgeTone, { backgroundColor: string; color: string; borderColor: string }> = {
-  danger: { backgroundColor: "#FBE7E4", color: "#9D231E", borderColor: "#FBE7E4" },
-  caution: { backgroundColor: "#FFF1D3", color: "#805300", borderColor: "#FFF1D3" },
-  unknown: { backgroundColor: "#FFFFFF", color: colors.ink, borderColor: "#B8C8BF" },
-  reportedAbsent: { backgroundColor: "#E4F3EC", color: "#075E49", borderColor: "#E4F3EC" },
+const tones: Record<BadgeTone, { backgroundColor: string; borderColor: string }> = {
+  danger: { backgroundColor: "#F9D3CE", borderColor: "#E8ADA7" },
+  caution: { backgroundColor: "#FFE6AD", borderColor: "#E8C97E" },
+  unknown: { backgroundColor: "#EDF1EE", borderColor: "#B8C8BF" },
+  reportedAbsent: { backgroundColor: "#DCF3E8", borderColor: "#A9D5BF" },
 };
 
 function menuErrorMessage(error: unknown): string {
@@ -29,7 +30,7 @@ function menuErrorMessage(error: unknown): string {
 function DishCard({ dish, confirmed, disabled, onPress }: { dish: SummaryDish; confirmed: boolean; disabled: boolean; onPress: () => void }) {
   const price = dish.price == null ? "" : `${dish.currency === "JPY" ? "¥" : `${dish.currency} `}${dish.price}`;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${confirmed ? "View confirmed result" : "View details"} for ${dish.name}`} disabled={disabled} onPress={onPress} style={[styles.dishCard, confirmed && styles.confirmedCard]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${confirmed ? "View confirmed result" : "View details"} for ${dish.name}. ${dish.badges.map((badge) => badge.label).join(". ")}`} disabled={disabled} onPress={onPress} style={[styles.dishCard, confirmed && styles.confirmedCard]}>
       <View style={styles.dishTop}>
         <Text style={styles.dishName}>{dish.name}{dish.originalName ? ` ${dish.originalName}` : ""}</Text>
         {price ? <Text style={styles.price}>{price}</Text> : null}
@@ -37,7 +38,12 @@ function DishCard({ dish, confirmed, disabled, onPress }: { dish: SummaryDish; c
       <View style={styles.badges}>
         {dish.badges.map((badge, index) => {
           const tone = tones[badge.tone];
-          return <Text key={`${index}-${badge.label}`} style={[styles.badge, { backgroundColor: tone.backgroundColor, color: tone.color, borderColor: tone.borderColor }]}>{badge.label}</Text>;
+          return (
+            <View key={`${index}-${badge.allergenId}`} style={[styles.badge, tone]}>
+              <IngredientIcon allergenId={badge.allergenId} size={23} />
+              <Text style={styles.badgeName}>{badge.name}</Text>
+            </View>
+          );
         })}
       </View>
       {dish.needsRecheck ? <Text style={styles.recheck}>Answers or evidence need rechecking with staff.</Text> : null}
@@ -212,7 +218,8 @@ const styles = StyleSheet.create({
   dishName: { color: colors.ink, fontSize: 15, lineHeight: 20, fontWeight: "700", flex: 1 },
   price: { color: colors.ink, fontSize: 14, marginTop: 2 },
   badges: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 8 },
-  badge: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, fontSize: 12, fontWeight: "700", overflow: "hidden" },
+  badge: { flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, borderRadius: 15, paddingHorizontal: 7, paddingVertical: 4, minHeight: 34 },
+  badgeName: { color: colors.ink, fontSize: 12, fontWeight: "700" },
   recheck: { color: "#805300", fontSize: 11, marginTop: 8 },
   message: { color: colors.muted, marginTop: 22 },
   error: { color: colors.error, marginTop: 22 },
