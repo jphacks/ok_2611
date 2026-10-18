@@ -60,7 +60,7 @@ export default function LoginScreen() {
       <View style={styles.actions}>
         <PrimaryButton label={submitting ? "Logging in…" : "Log in"} onPress={submit} disabled={submitting} />
         <Pressable onPress={() => router.push("/onboarding")}><Text style={styles.link}>New here? <Text style={styles.green}>Create account</Text></Text></Pressable>
-        <Pressable onPress={() => router.back()}><Text style={styles.back}>Back</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.replace("/")}><Text style={styles.back}>Back</Text></Pressable>
       </View>
     </Page>
   );

@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { clearAccountSession, getAccountDetails, getAccountToken, getMe, isAccountAuthError, saveAccountDetails, type AccountDetails } from "../../src/api/auth";
 import { allergenOptions } from "../../src/content/preferences";
+import { endAccountSession } from "../../src/features/account/session";
 import { getSelectedAllergenIds } from "../../src/features/profile/selection";
 import { colors } from "../../src/theme";
 
@@ -60,6 +61,11 @@ export default function ProfileScreen() {
     .filter((item) => selectedIds.includes(item.id))
     .map((item) => item.display_name);
 
+  function logOut() {
+    endAccountSession();
+    router.replace("/");
+  }
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.body}>
@@ -87,6 +93,12 @@ export default function ProfileScreen() {
           <Text style={styles.allergenList}>{selectedNames.length ? selectedNames.join(" · ") : "No allergens selected yet"}</Text>
         </View>
 
+        {loggedIn ? (
+          <Pressable accessibilityRole="button" onPress={logOut} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Log out</Text>
+          </Pressable>
+        ) : null}
+
       </ScrollView>
     </View>
   );
@@ -113,4 +125,6 @@ const styles = StyleSheet.create({
   activeEdit: { backgroundColor: colors.green, borderRadius: 22, minWidth: 92, paddingVertical: 10, alignItems: "center" },
   activeEditText: { color: colors.white, fontSize: 14, fontWeight: "700" },
   allergenList: { color: colors.ink, fontSize: 15, lineHeight: 23, marginTop: 10 },
+  logoutButton: { marginTop: 40, minHeight: 52, borderRadius: 26, borderWidth: 1.5, borderColor: colors.green, alignItems: "center", justifyContent: "center" },
+  logoutText: { color: colors.green, fontSize: 16, fontWeight: "700" },
 });
