@@ -37,7 +37,8 @@ export default function LoginScreen() {
         return;
       }
       startAccountSession(result, saved.allergen_ids);
-      router.replace("/profiles/setup");
+      setPassword("");
+      router.push("/profiles/setup");
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "rate_limited") {
         setError("Too many attempts. Please wait and try again.");
@@ -60,7 +61,7 @@ export default function LoginScreen() {
       <View style={styles.actions}>
         <PrimaryButton label={submitting ? "Logging in…" : "Log in"} onPress={submit} disabled={submitting} />
         <Pressable onPress={() => router.push("/onboarding")}><Text style={styles.link}>New here? <Text style={styles.green}>Create account</Text></Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.replace("/")}><Text style={styles.back}>Back</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>Back</Text></Pressable>
       </View>
     </Page>
   );

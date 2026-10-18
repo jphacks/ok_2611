@@ -111,6 +111,7 @@ export default function ProfileSetupScreen() {
       <View style={styles.actions}>
         <PrimaryButton label={checking ? "Checking..." : "Save profile"} onPress={saveProfile} disabled={checking} />
         {needsLogin ? <PrimaryButton label="Log in" secondary onPress={() => router.push("/login")} /> : null}
+        <PrimaryButton label="Back" secondary onPress={() => router.back()} disabled={checking} />
       </View>
     </Page>
   );
