@@ -1,4 +1,4 @@
-import { router, Stack, useGlobalSearchParams, usePathname } from "expo-router";
+import { Link, router, Stack, useGlobalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { hasActiveAccountSession } from "../src/api/auth";
 import { BrandLogo } from "../src/components/BrandLogo";
@@ -47,7 +47,9 @@ export default function RootLayout() {
         display: "flex", alignItems: "center", justifyContent: "center",
         backgroundColor: colors.white,
       }}>
-        <BrandLogo width={210} variant="header" />
+        <Link href="/map" accessibilityLabel="Go to Map">
+          <BrandLogo width={210} variant="header" />
+        </Link>
       </header> : null}
       <main lang={showTour ? tourLanguage : undefined} style={{
         height: "100dvh", boxSizing: "border-box", overflow: "hidden",
