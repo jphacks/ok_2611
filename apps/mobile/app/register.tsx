@@ -75,7 +75,7 @@ export default function RegisterScreen() {
   }
 
   return (
-    <Page step="2 / 2" title="Create your account" subtitle="Enter your details to get started.">
+    <Page title="Create your account" subtitle="Enter your details to get started.">
       {!isRegisterApiConfigured ? (
         <View style={styles.preview}>
           <Text style={styles.previewText}>Preview mode · No account will be created until an API URL is configured.</Text>

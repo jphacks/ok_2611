@@ -3,23 +3,16 @@ import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Page } from "../src/components/Page";
 import { PrimaryButton } from "../src/components/PrimaryButton";
-import { TermsModal } from "../src/components/TermsModal";
+import { TermsScrollBox } from "../src/components/TermsScrollBox";
 import { estimateNotice, safetyNotice } from "../src/content/terms";
 import { colors } from "../src/theme";
 
 export default function OnboardingScreen() {
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [termsOpened, setTermsOpened] = useState(false);
-  const [termsVisible, setTermsVisible] = useState(false);
-
-  function openTerms() {
-    setTermsOpened(true);
-    setTermsVisible(true);
-  }
+  const [termsRead, setTermsRead] = useState(false);
 
   return (
-    <Page step="1 / 2" title="Before you start" subtitle="Language: English">
-      <TermsModal visible={termsVisible} onClose={() => setTermsVisible(false)} />
+    <Page title="Before you start" subtitle="Language: English">
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Safety comes first</Text>
         <Text style={styles.copy}>{safetyNotice}</Text>
@@ -28,15 +21,16 @@ export default function OnboardingScreen() {
         <Text style={styles.cardTitle}>About the estimates</Text>
         <Text style={styles.copy}>{estimateNotice}</Text>
       </View>
-      <Pressable accessibilityRole="link" onPress={openTerms}>
-        <Text style={styles.termsLink}>Read the Terms of Use and safety notice</Text>
-      </Pressable>
+      <TermsScrollBox onReachEnd={() => setTermsRead(true)} />
+      <Text style={styles.termsHint}>
+        {termsRead ? "Thanks for reading. You can now agree to the Terms of Use." : "Scroll to the end of the Terms of Use to continue."}
+      </Text>
       <Pressable
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: termsAccepted, disabled: !termsOpened }}
-        disabled={!termsOpened}
+        accessibilityState={{ checked: termsAccepted, disabled: !termsRead }}
+        disabled={!termsRead}
         onPress={() => setTermsAccepted((accepted) => !accepted)}
-        style={[styles.termsChoice, !termsOpened && styles.termsChoiceDisabled]}
+        style={[styles.termsChoice, !termsRead && styles.termsChoiceDisabled]}
       >
         <View style={[styles.termsBox, termsAccepted && styles.termsBoxSelected]}>
           {termsAccepted ? <Text style={styles.checkmark}>✓</Text> : null}
@@ -63,7 +57,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.greenPale, borderRadius: 16, padding: 19, marginBottom: 13 },
   cardTitle: { fontSize: 16, color: colors.ink, fontWeight: "700", marginBottom: 8 },
   copy: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  termsLink: { color: colors.green, fontSize: 13, fontWeight: "700", marginBottom: 16, textDecorationLine: "underline" },
+  termsHint: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 8, marginBottom: 8 },
   termsChoice: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, marginBottom: 18 },
   termsChoiceDisabled: { opacity: 0.45 },
   termsBox: { width: 19, height: 19, borderRadius: 4, borderWidth: 1.5, borderColor: colors.muted, alignItems: "center", justifyContent: "center" },
