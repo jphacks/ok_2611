@@ -1,5 +1,6 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { DishDetail } from "./summary";
+import { IngredientIcon } from "../../components/IngredientIcon";
 import { colors } from "../../theme";
 
 type Props = {
@@ -47,6 +48,7 @@ export function DishDetailSheet({ detail, onClose, onAskStaff }: Props) {
                   return (
                     <View key={item.id} style={[styles.allergenRow, index > 0 && styles.allergenDivider]}>
                       <View style={styles.allergenCopy}>
+                        <IngredientIcon allergenId={item.id} size={28} />
                         <Text style={styles.allergenName}>{item.name}</Text>
                       </View>
                       <Text style={[styles.status, { backgroundColor: status.background, color: status.color, borderColor: status.border }]}>{status.label}</Text>
@@ -84,7 +86,7 @@ const styles = StyleSheet.create({
   allergenBox: { borderColor: colors.line, borderWidth: 1.5, borderRadius: 14, overflow: "hidden" },
   allergenRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10 },
   allergenDivider: { borderTopColor: colors.line, borderTopWidth: 1 },
-  allergenCopy: { flex: 1 },
+  allergenCopy: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   allergenName: { color: colors.ink, fontSize: 14, fontWeight: "700" },
   status: { borderWidth: 1, borderRadius: 12, overflow: "hidden", paddingHorizontal: 7, paddingVertical: 4, fontSize: 11, fontWeight: "700" },
   actions: { flexDirection: "row", gap: 10, paddingTop: 12, borderTopColor: colors.line, borderTopWidth: 1 },
