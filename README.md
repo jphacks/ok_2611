@@ -1,6 +1,7 @@
 # Meelyze+
 
-[![IMAGE ALT TEXT HERE](https://jphacks.com/wp-content/uploads/2026/07/IMG_5316.png)](https://www.youtube.com/watch?v=piaNsc6ilBI)
+[<img width="785" height="443" alt="meelyze-plus" src="https://github.com/user-attachments/assets/57714768-fb71-4585-9e7b-a2be05496672" />](https://meelyze-plus.vercel.app/?lang=ja)
+
 
 Meelyze+（メーライズプラス）は、食物アレルギーや食事制限のある訪日旅行者が、日本の食文化を楽しむために、メニューの理解と店員への確認を支援するWebアプリです。
 
