@@ -68,7 +68,7 @@ Meelyze+（メーライズプラス）は、食物アレルギーや食事制限
 * React Native・Expo・Expo Router（TypeScript）：スマートフォン向けWeb画面。
 * FastAPI（Python）：API、画像解析の連携、判定処理、認証・アクセス制御。
 * Supabase PostgreSQL・Storage：料理・店員回答・アカウント情報、非公開画像の保存。
-* Vercel：Web・APIを別プロジェクトで公開する構成。APIの接続先は用意済みですが、公開環境での全フロー検証は未完了です。
+* Vercel：Web・APIを別プロジェクトで公開する構成となっています。
 
 #### デバイス
 
