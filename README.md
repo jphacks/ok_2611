@@ -5,6 +5,12 @@
 
 Meelyze+（メーライズプラス）は、食物アレルギーや食事制限のある訪日旅行者が、日本の食文化を楽しむために、メニューの理解と店員への確認を支援するWebアプリです。
 
+## 各種リンク
+- アプリURL : https://meelyze-plus.vercel.app/?lang=ja
+- アプリ説明動画 : https://youtu.be/ts_oVFldU34
+<img width="432" height="432" alt="QR_306579" src="https://github.com/user-attachments/assets/3a3e6d26-02c9-43d1-a4bd-1fecb7abd963" />
+
+
 ## 製品概要
 
 ### 背景(製品開発のきっかけ、課題等）
